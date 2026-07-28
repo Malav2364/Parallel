@@ -2,6 +2,9 @@ from fastapi import FastAPI
 
 from app.api.health import router as health_router
 from app.core.config import settings
+from app.core.logger import logger
+
+logger.info("Starting Identity Service")
 
 app = FastAPI(
     title=settings.APP_NAME,
