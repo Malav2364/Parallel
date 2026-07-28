@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 from app.core.config import settings
 from app.core.logger import logger
+from app.exceptions.exceptions import ResourceNotFoundException
+
 
 router = APIRouter(tags=["Health"])
 
@@ -13,3 +15,7 @@ async def health():
         "version" : settings.APP_VERSION,
         "environment" : settings.APP_ENV,
     }
+
+@router.get("/test-error")
+async def test_error():
+    raise ResourceNotFoundException("User")
