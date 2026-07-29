@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.core.logger import logger
 from app.exceptions.handlers import parallel_exception_handler
 from app.exceptions.exceptions import ParallelException
+from app.api.router import api_router
 
 
 logger.info("Starting Identity Service")
@@ -19,6 +20,9 @@ app.add_exception_handler(
     parallel_exception_handler,
 )
 
+from app.api.router import api_router
+
+app.include_router(api_router)
 app.include_router(health_router)
 
 
