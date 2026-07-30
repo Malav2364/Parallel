@@ -2,6 +2,7 @@ from app.core.security import hash_password
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import UserCreate
+from app.exceptions.auth import EmailAlreadyExistsException
 
 
 class UserService:
@@ -14,7 +15,7 @@ class UserService:
         existing_user = self.repository.get_by_email(user.email)
 
         if existing_user:
-            raise ValueError("Email already registered")
+            raise EmailAlreadyExistsException()
 
         hashed_password = hash_password(user.password)
 

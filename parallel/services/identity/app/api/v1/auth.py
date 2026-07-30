@@ -22,11 +22,6 @@ def register(
 
     repository = UserRepository(db)
     service = UserService(repository)
-    try:
-        created_user = service.register_user(user)
-        return created_user
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        )
+    created_user = service.register_user(user)
+    
+    return created_user
