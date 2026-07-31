@@ -1,0 +1,43 @@
+name: parallel CI
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+
+jobs:
+  identity_service:
+    name: identity Service CI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/identity 
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install uv 
+        run: astral-sh/setup-wv@v3
+      - name: Install dependencies
+        run: uv sync
+      - name: Check python Version 
+        run: python --version 
+
+      - name: Run Tests
+        run: |
+          if [ -d "tests" ]; then
+            uv run pytest
+          else
+            echo "No tests yet"
+          fi
+        
+      - name: Build Docker Image
+        run: docker build -t parallel-identity 
