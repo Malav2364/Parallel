@@ -2,6 +2,8 @@ from datetime import datetime, timedelta, UTC
 from jose import jwt,JWTError
 from typing import Any
 from app.core.config import settings
+from app.exceptions.auth import InvalidTokenException
+
 
 def create_access_token(data: dict[str, Any]) -> str:
     to_encode = data.copy()
@@ -18,6 +20,7 @@ def create_access_token(data: dict[str, Any]) -> str:
         algorithm=settings.JWT_ALGORITHM,
     )
 
+
 def decode_access_token(token: str) -> dict[str, Any]:
     try:
         payload = jwt.decode(
@@ -25,7 +28,8 @@ def decode_access_token(token: str) -> dict[str, Any]:
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
         )
+
         return payload
 
     except JWTError:
-        return {}
+        raise InvalidTokenException()
