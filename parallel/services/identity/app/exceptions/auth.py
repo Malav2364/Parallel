@@ -34,3 +34,11 @@ class UserNotFoundException(ParallelException):
             error_code="AUTH_003",
             message="User not found",
         )
+
+class InvalidTokenException(ParallelException):
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code="AUTH_004",
+            message="Invalid or expired access token",
+        )
