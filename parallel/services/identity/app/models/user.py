@@ -1,7 +1,8 @@
 from sqlalchemy import Boolean
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
+from sqlalchemy.orm import mapped_column,relationship
+
 
 from app.models.base import BaseModel
 
@@ -41,4 +42,9 @@ class User(BaseModel):
         Boolean,
         default=False,
         nullable=False,
+    )
+    refresh_tokens = relationship(
+        "RefreshToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
