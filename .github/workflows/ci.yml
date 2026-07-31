@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/identity 
+        working-directory: parallel/services/identity 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
