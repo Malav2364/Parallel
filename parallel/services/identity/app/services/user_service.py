@@ -5,6 +5,13 @@ from app.schemas.user import UserCreate
 from app.exceptions.auth import EmailAlreadyExistsException
 from app.core.security import verify_password
 from app.exceptions.auth import InvalidCredentialsException
+from app.core.jwt import (
+    decode_refresh_token,
+    create_access_token,
+)
+from app.exceptions.auth import (
+    InvalidRefreshTokenException,
+)
 
 
 class UserService:
@@ -44,3 +51,25 @@ class UserService:
             raise InvalidCredentialsException()
 
         return user
+
+    def refresh_access_token(
+        self,
+        refresh_token: str,
+    ) -> str:
+        payload = decode_refresh_token(refresh_token)
+
+        email = payload.get("sub")
+
+        if email is None:
+            raise InvalidRefreshTokenException()
+
+        user = self.repository.get_by_email(email)
+
+        if user is None:
+            raise InvalidRefreshTokenException()
+
+        return create_access_token(
+            {
+                "sub": user.email,
+            }
+        )

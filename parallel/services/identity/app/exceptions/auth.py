@@ -42,3 +42,11 @@ class InvalidTokenException(ParallelException):
             error_code="AUTH_004",
             message="Invalid or expired access token",
         )
+
+class InvalidRefreshTokenException(ParallelException):
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code="AUTH_005",
+            message="Invalid or expired refresh token",
+        )
