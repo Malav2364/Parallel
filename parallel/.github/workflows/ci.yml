@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/identity 
+        working-directory: parallel/services/identity
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: install uv 
-        run: astral-sh/setup-wv@v3
+        uses: astral-sh/setup-uv@v3
       - name: Install dependencies
         run: uv sync
       - name: Check python Version 
@@ -40,4 +40,4 @@ jobs:
           fi
         
       - name: Build Docker Image
-        run: docker build -t parallel-identity 
+        run: docker build -t parallel-identity .
