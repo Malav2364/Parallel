@@ -11,6 +11,16 @@ from app.schemas.user import UserResponse
 from app.services.user_service import UserService
 from fastapi.security import OAuth2PasswordRequestForm
 
+from app.core.jwt import (
+    create_access_token,
+    create_refresh_token,
+)
+
+from app.schemas.auth import (
+    RefreshTokenRequest,
+    AccessTokenResponse,
+)
+
 router=APIRouter()
 
 @router.post(
@@ -52,6 +62,33 @@ def login(
         }
     )
 
+    refresh_token = create_refresh_token(
+        data={
+            "sub": user.email,
+        }
+    )
+
     return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+
+@router.post(
+    "/refresh",
+    response_model=AccessTokenResponse,
+    status_code=status.HTTP_200_OK,
+)
+def refresh(
+    request: RefreshTokenRequest,
+    db: Session = Depends(get_db),
+):
+    repository = UserRepository(db)
+    service = UserService(repository)
+
+    access_token = service.refresh_access_token(
+        request.refresh_token,
+    )
+
+    return AccessTokenResponse(
         access_token=access_token,
     )
