@@ -79,3 +79,8 @@ def decode_refresh_token(token: str) -> dict[str, Any]:
         raise InvalidRefreshTokenException()
 
     return payload
+
+def refresh_token_expiry() -> datetime:
+    return datetime.now(UTC) + timedelta(
+        days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS
+    )
