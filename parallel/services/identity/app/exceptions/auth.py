@@ -50,3 +50,11 @@ class InvalidRefreshTokenException(ParallelException):
             error_code="AUTH_005",
             message="Invalid or expired refresh token",
         )
+
+class RefreshTokenRevokedException(ParallelException):
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code="AUTH_006",
+            message="Refresh token has been revoked",
+        )

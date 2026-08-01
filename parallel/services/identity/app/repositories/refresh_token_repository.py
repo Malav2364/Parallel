@@ -1,3 +1,5 @@
+from datetime import datetime, UTC
+
 from sqlalchemy.orm import Session
 
 from app.models.refresh_token import RefreshToken
@@ -23,7 +25,7 @@ class RefreshTokenRepository:
         return (
             self.db.query(RefreshToken)
             .filter(
-                RefreshToken.token_hash == token_hash
+                RefreshToken.token_hash == token_hash,
             )
             .first()
         )
@@ -34,3 +36,16 @@ class RefreshTokenRepository:
     ) -> None:
         refresh_token.is_revoked = True
         self.db.commit()
+
+    def delete_expired(self) -> int:
+        deleted = (
+            self.db.query(RefreshToken)
+            .filter(
+                RefreshToken.expires_at < datetime.now(UTC),
+            )
+            .delete()
+        )
+
+        self.db.commit()
+
+        return deleted

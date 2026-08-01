@@ -18,6 +18,13 @@ from app.models.user import User
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import UserCreate
+from datetime import datetime, UTC
+
+from app.core.token_hash import hash_token
+from app.exceptions.auth import (
+    InvalidRefreshTokenException,
+    RefreshTokenRevokedException,
+)
 
 
 class UserService:
@@ -71,18 +78,41 @@ class UserService:
         refresh_token: str,
     ) -> str:
 
+        # 1. Verify JWT signature & type
         payload = decode_refresh_token(refresh_token)
 
+        # 2. Hash the incoming refresh token
+        token_hash = hash_token(refresh_token)
+
+        # 3. Find token in database
+        stored_token = self.refresh_token_repository.get_by_token_hash(
+            token_hash,
+        )
+
+        if stored_token is None:
+            raise InvalidRefreshTokenException()
+
+        # 4. Check if revoked
+        if stored_token.is_revoked:
+            raise RefreshTokenRevokedException()
+
+        # 5. Check expiry stored in DB
+        if stored_token.expires_at < datetime.now(UTC):
+            raise InvalidRefreshTokenException()
+
+        # 6. Get email from JWT
         email = payload.get("sub")
 
         if email is None:
             raise InvalidRefreshTokenException()
 
+        # 7. Find user
         user = self.repository.get_by_email(email)
 
         if user is None:
             raise InvalidRefreshTokenException()
 
+        # 8. Return new access token
         return create_access_token(
             {
                 "sub": user.email,
