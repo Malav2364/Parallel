@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status, Response
+from fastapi import APIRouter, Depends, status, Response, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -11,9 +11,10 @@ from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import (
     RefreshTokenRequest,
+    RefreshTokenResponse,
     LogoutRequest,
+    MessageResponse,
     TokenResponse,
-    RefreshTokenResponse
 )
 from app.schemas.user import UserCreate, UserResponse
 from app.services.user_service import UserService
@@ -131,4 +132,27 @@ def logout(
 
     return Response(
         status_code=status.HTTP_204_NO_CONTENT,
+    )
+
+@router.get(
+    "/verify-email",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+)
+def verify_email(
+    token: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    user_repository = UserRepository(db)
+    refresh_token_repository = RefreshTokenRepository(db)
+
+    service = UserService(
+        user_repository,
+        refresh_token_repository,
+    )
+
+    service.verify_email(token)
+
+    return MessageResponse(
+        message="Email verified successfully",
     )

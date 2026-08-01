@@ -10,14 +10,12 @@ class UserRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    # Create User
     def create(self, user: User) -> User:
         self.db.add(user)
         self.db.commit()
         self.db.refresh(user)
         return user
 
-    #Get by ID
     def get_by_id(self, user_id: UUID) -> User | None:
         return (
             self.db.query(User)
@@ -25,7 +23,6 @@ class UserRepository:
             .first()
         )
 
-    #Get by Email
     def get_by_email(self, email: str) -> User | None:
         return (
             self.db.query(User)
@@ -33,11 +30,17 @@ class UserRepository:
             .first()
         )
 
-    #Update
     def update(self) -> None:
         self.db.commit()
 
-    #Delete
     def delete(self, user: User) -> None:
         self.db.delete(user)
         self.db.commit()
+
+    def update(
+        self,
+        user: User,
+    ) -> User:
+        self.db.commit()
+        self.db.refresh(user)
+        return user

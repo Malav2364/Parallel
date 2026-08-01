@@ -3,7 +3,10 @@ from app.core.jwt import (
     decode_refresh_token,
     create_refresh_token,
     refresh_token_expiry,
+    create_email_verification_token,
+    decode_email_verification_token,
 )
+from app.services.email_service import EmailService
 from app.core.security import (
     hash_password,
     verify_password,
@@ -13,8 +16,12 @@ from app.exceptions.auth import (
     EmailAlreadyExistsException,
     InvalidCredentialsException,
     InvalidRefreshTokenException,
-    RefreshTokenRevokedException
+    RefreshTokenRevokedException,
+    EmailAlreadyVerifiedException,
+    InvalidVerificationTokenException,
 )
+import asyncio
+from app.core.config import settings
 from app.schemas.auth import RefreshTokenResponse
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
@@ -34,18 +41,23 @@ class UserService:
     ):
         self.repository = repository
         self.refresh_token_repository = refresh_token_repository
+        self.email_service = EmailService()
 
     def register_user(
         self,
         user: UserCreate,
     ) -> User:
 
-        existing_user = self.repository.get_by_email(user.email)
+        existing_user = self.repository.get_by_email(
+            user.email,
+        )
 
         if existing_user:
             raise EmailAlreadyExistsException()
 
-        hashed_password = hash_password(user.password)
+        hashed_password = hash_password(
+            user.password,
+        )
 
         new_user = User(
             email=user.email,
@@ -54,8 +66,30 @@ class UserService:
             last_name=user.last_name,
         )
 
-        return self.repository.create(new_user)
+        created_user = self.repository.create(
+            new_user,
+        )
 
+        verification_token = create_email_verification_token(
+            {
+                "sub": created_user.email,
+            }
+        )
+
+        verification_link = (
+            f"{settings.FRONTEND_URL}/verify-email"
+            f"?token={verification_token}"
+        )
+
+        asyncio.run(
+            self.email_service.send_verification_email(
+                email=created_user.email,
+                first_name=created_user.first_name,
+                verification_link=verification_link,
+            )
+        )
+
+        return created_user
     def authenticate_user(
         self,
         email: str,
@@ -77,13 +111,10 @@ class UserService:
         refresh_token: str,
     ) -> RefreshTokenResponse:
 
-        # Verify JWT
         payload = decode_refresh_token(refresh_token)
 
-        # Hash incoming token
         token_hash = hash_token(refresh_token)
 
-        # Find token in database
         stored_token = self.refresh_token_repository.get_by_token_hash(
             token_hash,
         )
@@ -91,15 +122,12 @@ class UserService:
         if stored_token is None:
             raise InvalidRefreshTokenException()
 
-        # Already revoked
         if stored_token.is_revoked:
             raise RefreshTokenRevokedException()
 
-        # Expired
         if stored_token.expires_at < datetime.now(UTC):
             raise InvalidRefreshTokenException()
 
-        # Find user
         email = payload.get("sub")
 
         if email is None:
@@ -110,26 +138,22 @@ class UserService:
         if user is None:
             raise InvalidRefreshTokenException()
 
-        # Revoke old refresh token
         self.refresh_token_repository.revoke(
             stored_token,
         )
 
-        # Generate new access token
         access_token = create_access_token(
             {
                 "sub": user.email,
             }
         )
 
-        # Generate new refresh token
         new_refresh_token = create_refresh_token(
             {
                 "sub": user.email,
             }
         )
 
-        # Save new refresh token
         self.save_refresh_token(
             user=user,
             refresh_token=new_refresh_token,
@@ -155,6 +179,32 @@ class UserService:
         )
 
         self.refresh_token_repository.create(token)
+
+    def verify_email(
+        self,
+        token: str,
+    ) -> None:
+
+        payload = decode_email_verification_token(
+            token,
+        )
+
+        email = payload.get("sub")
+
+        if email is None:
+            raise InvalidVerificationTokenException()
+
+        user = self.repository.get_by_email(email)
+
+        if user is None:
+            raise InvalidVerificationTokenException()
+
+        if user.is_verified:
+            raise EmailAlreadyVerifiedException()
+
+        user.is_verified = True
+
+        self.repository.update(user)
 
     def logout(
         self,
