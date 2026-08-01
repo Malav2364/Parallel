@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.auth import (
     AccessTokenResponse,
     RefreshTokenRequest,
+    LogoutRequest,
     TokenResponse,
 )
 from app.schemas.user import UserCreate, UserResponse
@@ -110,4 +111,28 @@ def refresh(
 
     return AccessTokenResponse(
         access_token=access_token,
+    )
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def logout(
+    request: LogoutRequest,
+    db: Session = Depends(get_db),
+):
+    user_repository = UserRepository(db)
+    refresh_token_repository = RefreshTokenRepository(db)
+
+    service = UserService(
+        user_repository,
+        refresh_token_repository,
+    )
+
+    service.logout(
+        request.refresh_token,
+    )
+
+    return Response(
+        status_code=status.HTTP_204_NO_CONTENT,
     )
