@@ -58,3 +58,20 @@ class RefreshTokenRevokedException(ParallelException):
             error_code="AUTH_006",
             message="Refresh token has been revoked",
         )
+
+class EmailAlreadyVerifiedException(ParallelException):
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="AUTH_007",
+            message="Email is already verified",
+        )
+
+
+class InvalidVerificationTokenException(ParallelException):
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code="AUTH_008",
+            message="Invalid verification token",
+        )

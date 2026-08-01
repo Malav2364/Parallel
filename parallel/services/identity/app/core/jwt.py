@@ -84,3 +84,23 @@ def refresh_token_expiry() -> datetime:
     return datetime.now(UTC) + timedelta(
         days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS
     )
+
+def create_email_verification_token(
+    data: dict[str, Any],
+) -> str:
+    return _create_token(
+        data=data,
+        expires_delta=timedelta(hours=24),
+        token_type="email_verification",
+    )
+
+def decode_email_verification_token(
+    token: str,
+) -> dict[str, Any]:
+
+    payload = decode_token(token)
+
+    if payload.get("type") != "email_verification":
+        raise InvalidTokenException()
+
+    return payload
