@@ -12,7 +12,9 @@ from app.exceptions.auth import (
     EmailAlreadyExistsException,
     InvalidCredentialsException,
     InvalidRefreshTokenException,
+    RefreshTokenRevokedException
 )
+
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.repositories.refresh_token_repository import RefreshTokenRepository
@@ -21,10 +23,6 @@ from app.schemas.user import UserCreate
 from datetime import datetime, UTC
 
 from app.core.token_hash import hash_token
-from app.exceptions.auth import (
-    InvalidRefreshTokenException,
-    RefreshTokenRevokedException,
-)
 
 
 class UserService:
@@ -134,3 +132,29 @@ class UserService:
         )
 
         self.refresh_token_repository.create(token)
+
+    def logout(
+        self,
+        refresh_token: str,
+    ) -> None:
+
+        # Verify JWT is valid
+        decode_refresh_token(refresh_token)
+
+        # Hash incoming refresh token
+        token_hash = hash_token(refresh_token)
+
+        # Find token in database
+        stored_token = self.refresh_token_repository.get_by_token_hash(
+            token_hash,
+        )
+
+        if stored_token is None:
+            raise InvalidRefreshTokenException()
+
+        # Already revoked
+        if stored_token.is_revoked:
+            raise RefreshTokenRevokedException()
+
+        # Revoke token
+        self.refresh_token_repository.revoke(stored_token)
