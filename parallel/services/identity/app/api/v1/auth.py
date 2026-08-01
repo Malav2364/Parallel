@@ -10,10 +10,10 @@ from app.core.jwt import (
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import (
-    AccessTokenResponse,
     RefreshTokenRequest,
     LogoutRequest,
     TokenResponse,
+    RefreshTokenResponse
 )
 from app.schemas.user import UserCreate, UserResponse
 from app.services.user_service import UserService
@@ -90,7 +90,7 @@ def login(
 
 @router.post(
     "/refresh",
-    response_model=AccessTokenResponse,
+    response_model=RefreshTokenResponse,
     status_code=status.HTTP_200_OK,
 )
 def refresh(
@@ -105,12 +105,8 @@ def refresh(
         refresh_token_repository,
     )
 
-    access_token = service.refresh_access_token(
+    return service.refresh_access_token(
         request.refresh_token,
-    )
-
-    return AccessTokenResponse(
-        access_token=access_token,
     )
 
 @router.post(
