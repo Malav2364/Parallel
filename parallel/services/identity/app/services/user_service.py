@@ -1,6 +1,7 @@
 from app.core.jwt import (
     create_access_token,
     decode_refresh_token,
+    create_refresh_token,
     refresh_token_expiry,
 )
 from app.core.security import (
@@ -14,7 +15,7 @@ from app.exceptions.auth import (
     InvalidRefreshTokenException,
     RefreshTokenRevokedException
 )
-
+from app.schemas.auth import RefreshTokenResponse
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.repositories.refresh_token_repository import RefreshTokenRepository
@@ -74,15 +75,15 @@ class UserService:
     def refresh_access_token(
         self,
         refresh_token: str,
-    ) -> str:
+    ) -> RefreshTokenResponse:
 
-        # 1. Verify JWT signature & type
+        # Verify JWT
         payload = decode_refresh_token(refresh_token)
 
-        # 2. Hash the incoming refresh token
+        # Hash incoming token
         token_hash = hash_token(refresh_token)
 
-        # 3. Find token in database
+        # Find token in database
         stored_token = self.refresh_token_repository.get_by_token_hash(
             token_hash,
         )
@@ -90,31 +91,53 @@ class UserService:
         if stored_token is None:
             raise InvalidRefreshTokenException()
 
-        # 4. Check if revoked
+        # Already revoked
         if stored_token.is_revoked:
             raise RefreshTokenRevokedException()
 
-        # 5. Check expiry stored in DB
+        # Expired
         if stored_token.expires_at < datetime.now(UTC):
             raise InvalidRefreshTokenException()
 
-        # 6. Get email from JWT
+        # Find user
         email = payload.get("sub")
 
         if email is None:
             raise InvalidRefreshTokenException()
 
-        # 7. Find user
         user = self.repository.get_by_email(email)
 
         if user is None:
             raise InvalidRefreshTokenException()
 
-        # 8. Return new access token
-        return create_access_token(
+        # Revoke old refresh token
+        self.refresh_token_repository.revoke(
+            stored_token,
+        )
+
+        # Generate new access token
+        access_token = create_access_token(
             {
                 "sub": user.email,
             }
+        )
+
+        # Generate new refresh token
+        new_refresh_token = create_refresh_token(
+            {
+                "sub": user.email,
+            }
+        )
+
+        # Save new refresh token
+        self.save_refresh_token(
+            user=user,
+            refresh_token=new_refresh_token,
+        )
+
+        return RefreshTokenResponse(
+            access_token=access_token,
+            refresh_token=new_refresh_token,
         )
 
     def save_refresh_token(
@@ -137,14 +160,8 @@ class UserService:
         self,
         refresh_token: str,
     ) -> None:
-
-        # Verify JWT is valid
         decode_refresh_token(refresh_token)
-
-        # Hash incoming refresh token
         token_hash = hash_token(refresh_token)
-
-        # Find token in database
         stored_token = self.refresh_token_repository.get_by_token_hash(
             token_hash,
         )
@@ -152,9 +169,7 @@ class UserService:
         if stored_token is None:
             raise InvalidRefreshTokenException()
 
-        # Already revoked
         if stored_token.is_revoked:
             raise RefreshTokenRevokedException()
-
-        # Revoke token
+        
         self.refresh_token_repository.revoke(stored_token)
