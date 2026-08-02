@@ -16,16 +16,16 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/identity 
+        working-directory: parallel/services/identity 
     steps:
       - name: Checkout Repository
         run: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Checkout Repository
+        uses: actions/checkout@v4
         with:
           python-version: "3.13"
-      - name: install uv 
-        run: astral-sh/setup-uv@v3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
       - name: Install dependencies
         run: uv sync
       - name: Check python Version 
