@@ -30,3 +30,10 @@ class MessageResponse(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str

@@ -41,3 +41,25 @@ class EmailService:
             subject="Verify your email",
             html_content=html,
         )
+
+    async def send_password_reset_email(
+        self,
+        email: str,
+        first_name: str,
+        reset_link: str,
+    ) -> None:
+
+        template = self.environment.get_template(
+            "reset_password.html",
+        )
+
+        html = template.render(
+            first_name=first_name,
+            reset_link=reset_link,
+        )
+
+        await self.mail_client.send_email(
+            to_email=email,
+            subject="Reset your password",
+            html_content=html,
+        )

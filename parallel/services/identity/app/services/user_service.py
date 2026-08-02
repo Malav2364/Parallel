@@ -5,6 +5,8 @@ from app.core.jwt import (
     refresh_token_expiry,
     create_email_verification_token,
     decode_email_verification_token,
+    create_password_reset_token,
+    decode_password_reset_token,
 )
 from app.services.email_service import EmailService
 from app.core.security import (
@@ -21,6 +23,7 @@ from app.exceptions.auth import (
     InvalidVerificationTokenException,
     EmailNotVerifiedException,
     UserAlreadyVerifiedException,
+    InvalidTokenException
 )
 import asyncio
 from app.core.config import settings
@@ -245,6 +248,36 @@ class UserService:
             )
         )
 
+    def forgot_password(
+        self,
+        email: str,
+    ) -> None:
+
+        user = self.repository.get_by_email(email)
+
+        # Do nothing if user doesn't exist
+        if user is None:
+            return
+
+        reset_token = create_password_reset_token(
+            {
+                "sub": user.email,
+            }
+        )
+
+        reset_link = (
+            f"{settings.FRONTEND_URL}/reset-password"
+            f"?token={reset_token}"
+        )
+
+        asyncio.run(
+            self.email_service.send_password_reset_email(
+                email=user.email,
+                first_name=user.first_name,
+                reset_link=reset_link,
+            )
+        )
+
     def logout(
         self,
         refresh_token: str,
@@ -262,3 +295,37 @@ class UserService:
             raise RefreshTokenRevokedException()
         
         self.refresh_token_repository.revoke(stored_token)
+    
+    def reset_password(
+        self,
+        token: str,
+        new_password: str,
+    ) -> None:
+
+        payload = decode_password_reset_token(
+            token,
+        )
+
+        email = payload.get("sub")
+
+        if email is None:
+            raise InvalidTokenException()
+
+        user = self.repository.get_by_email(
+            email,
+        )
+
+        if user is None:
+            raise InvalidTokenException()
+
+        user.password_hash = hash_password(
+            new_password,
+        )
+
+        self.repository.update(
+            user,
+        )
+
+        self.refresh_token_repository.revoke_all_for_user(
+            user.id,
+        )
