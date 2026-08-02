@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DATABASE_URL: str
     JWT_SECRET_KEY: str
-    JWT_ALGORITHM: str 
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int    
+    JWT_ALGORITHM: str
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int
     SMTP_HOST: str
     SMTP_PORT: int
@@ -19,10 +19,7 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True
     FRONTEND_URL: str
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        case_sensitive=True
-    )
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 
 settings = Settings()

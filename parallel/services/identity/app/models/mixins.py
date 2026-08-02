@@ -1,13 +1,8 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
-
-from uuid import UUID
-from uuid import uuid4
-
-from sqlalchemy import Uuid
+from sqlalchemy import DateTime, Uuid
+from sqlalchemy.orm import Mapped, mapped_column
 
 
 class TimestampMixin:
@@ -23,6 +18,7 @@ class TimestampMixin:
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
+
 
 class UUIDMixin:
     id: Mapped[UUID] = mapped_column(

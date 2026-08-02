@@ -15,15 +15,11 @@ class MailClient:
 
         message = EmailMessage()
 
-        message["From"] = (
-            f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM}>"
-        )
+        message["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM}>"
         message["To"] = to_email
         message["Subject"] = subject
 
-        message.set_content(
-            "Please use an HTML compatible email client."
-        )
+        message.set_content("Please use an HTML compatible email client.")
 
         message.add_alternative(
             html_content,

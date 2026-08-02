@@ -23,8 +23,14 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "black>=26.5.1",
     "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.1",
+]
+
+[tool.ruff.lint]
+ignore = [
+    "B008",
 ]

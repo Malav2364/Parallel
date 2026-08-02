@@ -1,11 +1,11 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from app.core.logger import logger
 from app.exceptions.exceptions import ParallelException
 from app.schemas.error import ErrorDetail, ErrorResponse
-from app.core.logger import logger
 
 
 async def parallel_exception_handler(
@@ -21,12 +21,12 @@ async def parallel_exception_handler(
         path=request.url.path,
     )
     logger.error(
-    "%s: %s | Path: %s",
-    exc.error_code,
-    exc.message,
-    request.url.path,
-)
-    
+        "%s: %s | Path: %s",
+        exc.error_code,
+        exc.message,
+        request.url.path,
+    )
+
     return JSONResponse(
         status_code=exc.status_code,
         content=response.model_dump(),
