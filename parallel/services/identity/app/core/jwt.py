@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from typing import Any
-
+from uuid import uuid4
 from jose import JWTError, jwt
 
 from app.core.config import settings
-from app.exceptions.auth import InvalidTokenException,InvalidRefreshTokenException
+from app.exceptions.auth import InvalidRefreshTokenException, InvalidTokenException
 
 
 def _create_token(
@@ -18,7 +18,14 @@ def _create_token(
         {
             "exp": datetime.now(UTC) + expires_delta,
             "type": token_type,
+            "jti": str(uuid4()),
         }
+    )
+
+    return jwt.encode(
+        payload,
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
     )
 
     return jwt.encode(
@@ -64,6 +71,7 @@ def decode_token(token: str) -> dict[str, Any]:
     except JWTError:
         raise InvalidTokenException()
 
+
 def decode_access_token(token: str) -> dict[str, Any]:
     payload = decode_token(token)
 
@@ -71,6 +79,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
         raise InvalidTokenException()
 
     return payload
+
 
 def decode_refresh_token(token: str) -> dict[str, Any]:
     payload = decode_token(token)
@@ -80,10 +89,10 @@ def decode_refresh_token(token: str) -> dict[str, Any]:
 
     return payload
 
+
 def refresh_token_expiry() -> datetime:
-    return datetime.now(UTC) + timedelta(
-        days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS
-    )
+    return datetime.now(UTC) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+
 
 def create_email_verification_token(
     data: dict[str, Any],
@@ -93,6 +102,7 @@ def create_email_verification_token(
         expires_delta=timedelta(hours=24),
         token_type="email_verification",
     )
+
 
 def decode_email_verification_token(
     token: str,
@@ -105,6 +115,7 @@ def decode_email_verification_token(
 
     return payload
 
+
 def create_password_reset_token(
     data: dict[str, Any],
 ) -> str:
@@ -113,6 +124,7 @@ def create_password_reset_token(
         expires_delta=timedelta(hours=1),
         token_type="password_reset",
     )
+
 
 def decode_password_reset_token(
     token: str,

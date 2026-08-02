@@ -1,6 +1,5 @@
 from app.core.database import Base
-from app.models.mixins import TimestampMixin
-from app.models.mixins import UUIDMixin
+from app.models.mixins import TimestampMixin, UUIDMixin
 
 
 class BaseModel(

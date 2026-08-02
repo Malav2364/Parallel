@@ -1,9 +1,7 @@
 from pathlib import Path
 
-from jinja2 import Environment
-from jinja2 import FileSystemLoader
+from jinja2 import Environment, FileSystemLoader
 
-from app.core.config import settings
 from app.core.mail import MailClient
 
 
@@ -11,9 +9,7 @@ class EmailService:
     def __init__(self):
         self.mail_client = MailClient()
 
-        template_dir = (
-            Path(__file__).parent.parent / "templates"
-        )
+        template_dir = Path(__file__).parent.parent / "templates"
 
         self.environment = Environment(
             loader=FileSystemLoader(template_dir),
@@ -41,10 +37,10 @@ class EmailService:
     ) -> None:
 
         html = self._render_template(
-        "verify_email.html",
-        first_name=first_name,
-        verification_link=verification_link,
-    )
+            "verify_email.html",
+            first_name=first_name,
+            verification_link=verification_link,
+        )
 
         await self.mail_client.send_email(
             to_email=email,

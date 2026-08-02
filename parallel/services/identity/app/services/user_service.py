@@ -1,42 +1,42 @@
+import asyncio
+from datetime import UTC, datetime
+
+from app.core.config import settings
+from app.core.datetime import ensure_utc
 from app.core.jwt import (
     create_access_token,
-    decode_refresh_token,
-    create_refresh_token,
-    refresh_token_expiry,
     create_email_verification_token,
-    decode_email_verification_token,
     create_password_reset_token,
+    create_refresh_token,
+    decode_email_verification_token,
     decode_password_reset_token,
+    decode_refresh_token,
+    refresh_token_expiry,
 )
-from app.services.email_service import EmailService
 from app.core.logger import logger
 from app.core.security import (
     hash_password,
     verify_password,
 )
-
+from app.core.token_hash import hash_token
 from app.exceptions.auth import (
     EmailAlreadyExistsException,
+    EmailAlreadyVerifiedException,
+    EmailNotVerifiedException,
     InvalidCredentialsException,
     InvalidRefreshTokenException,
-    RefreshTokenRevokedException,
-    EmailAlreadyVerifiedException,
+    InvalidTokenException,
     InvalidVerificationTokenException,
-    EmailNotVerifiedException,
+    RefreshTokenRevokedException,
     UserAlreadyVerifiedException,
-    InvalidTokenException
 )
-import asyncio
-from app.core.config import settings
-from app.schemas.auth import RefreshTokenResponse
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.user_repository import UserRepository
+from app.schemas.auth import RefreshTokenResponse
 from app.schemas.user import UserCreate
-from datetime import datetime, UTC
-
-from app.core.token_hash import hash_token
+from app.services.email_service import EmailService
 
 
 class UserService:
@@ -64,8 +64,7 @@ class UserService:
         )
 
         verification_link = (
-            f"{settings.FRONTEND_URL}/verify-email"
-            f"?token={verification_token}"
+            f"{settings.FRONTEND_URL}/verify-email" f"?token={verification_token}"
         )
 
         asyncio.run(
@@ -75,7 +74,6 @@ class UserService:
                 verification_link=verification_link,
             )
         )
-
 
     def _send_password_reset_email(
         self,
@@ -87,10 +85,7 @@ class UserService:
             }
         )
 
-        reset_link = (
-            f"{settings.FRONTEND_URL}/reset-password"
-            f"?token={reset_token}"
-        )
+        reset_link = f"{settings.FRONTEND_URL}/reset-password" f"?token={reset_token}"
 
         asyncio.run(
             self.email_service.send_password_reset_email(
@@ -128,15 +123,15 @@ class UserService:
         )
 
         logger.info(
-        "User registered: %s",
-        created_user.email,
+            "User registered: %s",
+            created_user.email,
         )
 
         self._send_verification_email(
-             created_user,
+            created_user,
         )
         return created_user
-    
+
     def authenticate_user(
         self,
         email: str,
@@ -167,9 +162,9 @@ class UserService:
             raise EmailNotVerifiedException()
 
         logger.info(
-        "User logged in: %s",
-        user.email,
-         )
+            "User logged in: %s",
+            user.email,
+        )
 
         return user
 
@@ -192,7 +187,11 @@ class UserService:
         if stored_token.is_revoked:
             raise RefreshTokenRevokedException()
 
-        if stored_token.expires_at < datetime.now(UTC):
+        expires_at = ensure_utc(
+            stored_token.expires_at,
+        )
+
+        if expires_at < datetime.now(UTC):
             raise InvalidRefreshTokenException()
 
         email = payload.get("sub")
@@ -274,9 +273,9 @@ class UserService:
         self.repository.update(user)
 
         logger.info(
-        "Email verified: %s",
-        user.email,
-         )
+            "Email verified: %s",
+            user.email,
+        )
 
     def resend_verification_email(
         self,
@@ -295,7 +294,6 @@ class UserService:
             user,
         )
 
-
     def forgot_password(
         self,
         email: str,
@@ -305,16 +303,15 @@ class UserService:
 
         if user is None:
             return
-        
+
         logger.info(
-        "Password reset requested: %s",
-        user.email,
+            "Password reset requested: %s",
+            user.email,
         )
 
         self._send_password_reset_email(
             user,
         )
-
 
     def logout(
         self,
@@ -331,14 +328,14 @@ class UserService:
 
         if stored_token.is_revoked:
             raise RefreshTokenRevokedException()
-        
-        self.refresh_token_repository.revoke(stored_token) 
+
+        self.refresh_token_repository.revoke(stored_token)
 
         logger.info(
             "User logged out: %s",
             stored_token.user_id,
-        ) 
-    
+        )
+
     def reset_password(
         self,
         token: str,
@@ -374,6 +371,6 @@ class UserService:
         )
 
         logger.info(
-        "Password reset completed: %s",
-        user.email,
+            "Password reset completed: %s",
+            user.email,
         )

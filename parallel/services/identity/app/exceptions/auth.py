@@ -35,6 +35,7 @@ class UserNotFoundException(ParallelException):
             message="User not found",
         )
 
+
 class InvalidTokenException(ParallelException):
     def __init__(self):
         super().__init__(
@@ -42,6 +43,7 @@ class InvalidTokenException(ParallelException):
             error_code="AUTH_004",
             message="Invalid or expired access token",
         )
+
 
 class InvalidRefreshTokenException(ParallelException):
     def __init__(self):
@@ -51,6 +53,7 @@ class InvalidRefreshTokenException(ParallelException):
             message="Invalid or expired refresh token",
         )
 
+
 class RefreshTokenRevokedException(ParallelException):
     def __init__(self):
         super().__init__(
@@ -58,6 +61,7 @@ class RefreshTokenRevokedException(ParallelException):
             error_code="AUTH_006",
             message="Refresh token has been revoked",
         )
+
 
 class EmailAlreadyVerifiedException(ParallelException):
     def __init__(self):
@@ -76,6 +80,7 @@ class InvalidVerificationTokenException(ParallelException):
             message="Invalid verification token",
         )
 
+
 class EmailNotVerifiedException(ParallelException):
     def __init__(self):
         super().__init__(
@@ -83,7 +88,8 @@ class EmailNotVerifiedException(ParallelException):
             error_code="AUTH_009",
             message="Please verify your email before logging in.",
         )
-        
+
+
 class UserAlreadyVerifiedException(ParallelException):
     def __init__(self):
         super().__init__(

@@ -1,24 +1,20 @@
-from fastapi import APIRouter, Depends, status, Response, Query
+from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
-from app.api.deps import get_user_service
-# from sqlalchemy.orm import Session
 
-# from app.api.deps import get_db
+from app.api.deps import get_user_service
 from app.core.jwt import (
     create_access_token,
     create_refresh_token,
 )
-# from app.repositories.refresh_token_repository import RefreshTokenRepository
-# from app.repositories.user_repository import UserRepository
 from app.schemas.auth import (
-    RefreshTokenRequest,
-    RefreshTokenResponse,
+    ForgotPasswordRequest,
     LogoutRequest,
     MessageResponse,
-    TokenResponse,
+    RefreshTokenRequest,
+    RefreshTokenResponse,
     ResendVerificationRequest,
-    ForgotPasswordRequest,
-    ResetPasswordRequest
+    ResetPasswordRequest,
+    TokenResponse,
 )
 from app.schemas.user import UserCreate, UserResponse
 from app.services.user_service import UserService
@@ -52,7 +48,7 @@ def login(
         get_user_service,
     ),
 ):
-    
+
     user = service.authenticate_user(
         form_data.username,
         form_data.password,
@@ -96,6 +92,7 @@ def refresh(
         request.refresh_token,
     )
 
+
 @router.post(
     "/logout",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -104,9 +101,9 @@ def logout(
     request: LogoutRequest,
     service: UserService = Depends(
         get_user_service,
-    )
+    ),
 ):
-    
+
     service.logout(
         request.refresh_token,
     )
@@ -114,6 +111,7 @@ def logout(
     return Response(
         status_code=status.HTTP_204_NO_CONTENT,
     )
+
 
 @router.get(
     "/verify-email",
@@ -124,7 +122,7 @@ def verify_email(
     token: str = Query(...),
     service: UserService = Depends(
         get_user_service,
-    )
+    ),
 ):
 
     service.verify_email(token)
@@ -132,6 +130,7 @@ def verify_email(
     return MessageResponse(
         message="Email verified successfully",
     )
+
 
 @router.post(
     "/resend-verification",
@@ -142,9 +141,9 @@ def resend_verification(
     request: ResendVerificationRequest,
     service: UserService = Depends(
         get_user_service,
-    )
+    ),
 ):
-    
+
     service.resend_verification_email(
         request.email,
     )
@@ -152,6 +151,7 @@ def resend_verification(
     return MessageResponse(
         message="Verification email sent successfully.",
     )
+
 
 @router.post(
     "/forgot-password",
@@ -162,7 +162,7 @@ def forgot_password(
     request: ForgotPasswordRequest,
     service: UserService = Depends(
         get_user_service,
-    )
+    ),
 ):
 
     service.forgot_password(
@@ -176,6 +176,7 @@ def forgot_password(
         ),
     )
 
+
 @router.post(
     "/reset-password",
     response_model=MessageResponse,
@@ -185,7 +186,7 @@ def reset_password(
     request: ResetPasswordRequest,
     service: UserService = Depends(
         get_user_service,
-    )
+    ),
 ):
 
     service.reset_password(

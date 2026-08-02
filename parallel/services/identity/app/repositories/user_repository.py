@@ -17,25 +17,10 @@ class UserRepository:
         return user
 
     def get_by_id(self, user_id: UUID) -> User | None:
-        return (
-            self.db.query(User)
-            .filter(User.id == user_id)
-            .first()
-        )
+        return self.db.query(User).filter(User.id == user_id).first()
 
     def get_by_email(self, email: str) -> User | None:
-        return (
-            self.db.query(User)
-            .filter(User.email == email)
-            .first()
-        )
-
-    def update(self) -> None:
-        self.db.commit()
-
-    def delete(self, user: User) -> None:
-        self.db.delete(user)
-        self.db.commit()
+        return self.db.query(User).filter(User.email == email).first()
 
     def update(
         self,
