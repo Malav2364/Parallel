@@ -15,6 +15,7 @@ from app.schemas.auth import (
     LogoutRequest,
     MessageResponse,
     TokenResponse,
+    ResendVerificationRequest
 )
 from app.schemas.user import UserCreate, UserResponse
 from app.services.user_service import UserService
@@ -155,4 +156,29 @@ def verify_email(
 
     return MessageResponse(
         message="Email verified successfully",
+    )
+
+@router.post(
+    "/resend-verification",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+)
+def resend_verification(
+    request: ResendVerificationRequest,
+    db: Session = Depends(get_db),
+):
+    user_repository = UserRepository(db)
+    refresh_token_repository = RefreshTokenRepository(db)
+
+    service = UserService(
+        user_repository,
+        refresh_token_repository,
+    )
+
+    service.resend_verification_email(
+        request.email,
+    )
+
+    return MessageResponse(
+        message="Verification email sent successfully.",
     )

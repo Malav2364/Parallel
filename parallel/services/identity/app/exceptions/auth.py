@@ -75,3 +75,19 @@ class InvalidVerificationTokenException(ParallelException):
             error_code="AUTH_008",
             message="Invalid verification token",
         )
+
+class EmailNotVerifiedException(ParallelException):
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            error_code="AUTH_009",
+            message="Please verify your email before logging in.",
+        )
+        
+class UserAlreadyVerifiedException(ParallelException):
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="AUTH_010",
+            message="User is already verified.",
+        )
