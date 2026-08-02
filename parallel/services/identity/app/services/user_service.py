@@ -19,6 +19,8 @@ from app.exceptions.auth import (
     RefreshTokenRevokedException,
     EmailAlreadyVerifiedException,
     InvalidVerificationTokenException,
+    EmailNotVerifiedException,
+    UserAlreadyVerifiedException,
 )
 import asyncio
 from app.core.config import settings
@@ -103,6 +105,9 @@ class UserService:
 
         if not verify_password(password, user.password_hash):
             raise InvalidCredentialsException()
+
+        if not user.is_verified:
+            raise EmailNotVerifiedException()
 
         return user
 
@@ -205,6 +210,40 @@ class UserService:
         user.is_verified = True
 
         self.repository.update(user)
+
+    def resend_verification_email(
+        self,
+        email: str,
+    ) -> None:
+
+        user = self.repository.get_by_email(email)
+
+        if user is None:
+            raise InvalidCredentialsException()
+
+        if user.is_verified:
+            raise UserAlreadyVerifiedException()
+
+        verification_token = create_email_verification_token(
+            {
+                "sub": user.email,
+            }
+        )
+
+        verification_link = (
+            f"{settings.FRONTEND_URL}/verify-email"
+            f"?token={verification_token}"
+        )
+
+        import asyncio
+
+        asyncio.run(
+            self.email_service.send_verification_email(
+                email=user.email,
+                first_name=user.first_name,
+                verification_link=verification_link,
+            )
+        )
 
     def logout(
         self,
