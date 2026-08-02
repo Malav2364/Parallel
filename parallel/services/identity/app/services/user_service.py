@@ -9,11 +9,12 @@ from app.core.jwt import (
     decode_password_reset_token,
 )
 from app.services.email_service import EmailService
+from app.core.logger import logger
 from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.core.token_hash import hash_token
+
 from app.exceptions.auth import (
     EmailAlreadyExistsException,
     InvalidCredentialsException,
@@ -48,6 +49,57 @@ class UserService:
         self.refresh_token_repository = refresh_token_repository
         self.email_service = EmailService()
 
+    # ==========================================
+    # Private Helpers
+    # ==========================================
+
+    def _send_verification_email(
+        self,
+        user: User,
+    ) -> None:
+        verification_token = create_email_verification_token(
+            {
+                "sub": user.email,
+            }
+        )
+
+        verification_link = (
+            f"{settings.FRONTEND_URL}/verify-email"
+            f"?token={verification_token}"
+        )
+
+        asyncio.run(
+            self.email_service.send_verification_email(
+                email=user.email,
+                first_name=user.first_name,
+                verification_link=verification_link,
+            )
+        )
+
+
+    def _send_password_reset_email(
+        self,
+        user: User,
+    ) -> None:
+        reset_token = create_password_reset_token(
+            {
+                "sub": user.email,
+            }
+        )
+
+        reset_link = (
+            f"{settings.FRONTEND_URL}/reset-password"
+            f"?token={reset_token}"
+        )
+
+        asyncio.run(
+            self.email_service.send_password_reset_email(
+                email=user.email,
+                first_name=user.first_name,
+                reset_link=reset_link,
+            )
+        )
+
     def register_user(
         self,
         user: UserCreate,
@@ -75,26 +127,16 @@ class UserService:
             new_user,
         )
 
-        verification_token = create_email_verification_token(
-            {
-                "sub": created_user.email,
-            }
+        logger.info(
+        "User registered: %s",
+        created_user.email,
         )
 
-        verification_link = (
-            f"{settings.FRONTEND_URL}/verify-email"
-            f"?token={verification_token}"
+        self._send_verification_email(
+             created_user,
         )
-
-        asyncio.run(
-            self.email_service.send_verification_email(
-                email=created_user.email,
-                first_name=created_user.first_name,
-                verification_link=verification_link,
-            )
-        )
-
         return created_user
+    
     def authenticate_user(
         self,
         email: str,
@@ -105,12 +147,29 @@ class UserService:
 
         if user is None:
             raise InvalidCredentialsException()
+            logger.warning(
+                "Invalid login attempt for %s",
+                email,
+            )
 
         if not verify_password(password, user.password_hash):
             raise InvalidCredentialsException()
+            logger.warning(
+                "Invalid login attempt for %s",
+                email,
+            )
 
         if not user.is_verified:
+            logger.warning(
+                "Login attempted with unverified email: %s",
+                email,
+            )
             raise EmailNotVerifiedException()
+
+        logger.info(
+        "User logged in: %s",
+        user.email,
+         )
 
         return user
 
@@ -214,6 +273,11 @@ class UserService:
 
         self.repository.update(user)
 
+        logger.info(
+        "Email verified: %s",
+        user.email,
+         )
+
     def resend_verification_email(
         self,
         email: str,
@@ -227,26 +291,10 @@ class UserService:
         if user.is_verified:
             raise UserAlreadyVerifiedException()
 
-        verification_token = create_email_verification_token(
-            {
-                "sub": user.email,
-            }
+        self._send_verification_email(
+            user,
         )
 
-        verification_link = (
-            f"{settings.FRONTEND_URL}/verify-email"
-            f"?token={verification_token}"
-        )
-
-        import asyncio
-
-        asyncio.run(
-            self.email_service.send_verification_email(
-                email=user.email,
-                first_name=user.first_name,
-                verification_link=verification_link,
-            )
-        )
 
     def forgot_password(
         self,
@@ -255,28 +303,18 @@ class UserService:
 
         user = self.repository.get_by_email(email)
 
-        # Do nothing if user doesn't exist
         if user is None:
             return
-
-        reset_token = create_password_reset_token(
-            {
-                "sub": user.email,
-            }
+        
+        logger.info(
+        "Password reset requested: %s",
+        user.email,
         )
 
-        reset_link = (
-            f"{settings.FRONTEND_URL}/reset-password"
-            f"?token={reset_token}"
+        self._send_password_reset_email(
+            user,
         )
 
-        asyncio.run(
-            self.email_service.send_password_reset_email(
-                email=user.email,
-                first_name=user.first_name,
-                reset_link=reset_link,
-            )
-        )
 
     def logout(
         self,
@@ -294,7 +332,12 @@ class UserService:
         if stored_token.is_revoked:
             raise RefreshTokenRevokedException()
         
-        self.refresh_token_repository.revoke(stored_token)
+        self.refresh_token_repository.revoke(stored_token) 
+
+        logger.info(
+            "User logged out: %s",
+            stored_token.user_id,
+        ) 
     
     def reset_password(
         self,
@@ -328,4 +371,9 @@ class UserService:
 
         self.refresh_token_repository.revoke_all_for_user(
             user.id,
+        )
+
+        logger.info(
+        "Password reset completed: %s",
+        user.email,
         )

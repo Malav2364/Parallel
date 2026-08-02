@@ -9,6 +9,8 @@ from app.core.jwt import decode_access_token
 from app.exceptions.auth import InvalidTokenException
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.repositories.refresh_token_repository import RefreshTokenRepository
+from app.services.user_service import UserService
 
 
 
@@ -20,6 +22,17 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+        
+def get_user_service(
+    db: Session = Depends(get_db),
+    ) -> UserService:
+    user_repository = UserRepository(db)
+    refresh_token_repository = RefreshTokenRepository(db)
+
+    return UserService(
+        repository=user_repository,
+        refresh_token_repository=refresh_token_repository,
+    )
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/api/v1/auth/login",

@@ -1,14 +1,15 @@
 from fastapi import APIRouter, Depends, status, Response, Query
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
+from app.api.deps import get_user_service
+# from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+# from app.api.deps import get_db
 from app.core.jwt import (
     create_access_token,
     create_refresh_token,
 )
-from app.repositories.refresh_token_repository import RefreshTokenRepository
-from app.repositories.user_repository import UserRepository
+# from app.repositories.refresh_token_repository import RefreshTokenRepository
+# from app.repositories.user_repository import UserRepository
 from app.schemas.auth import (
     RefreshTokenRequest,
     RefreshTokenResponse,
@@ -32,15 +33,8 @@ router = APIRouter()
 )
 def register(
     user: UserCreate,
-    db: Session = Depends(get_db),
+    service: UserService = Depends(get_user_service),
 ):
-    user_repository = UserRepository(db)
-    refresh_token_repository = RefreshTokenRepository(db)
-
-    service = UserService(
-        user_repository,
-        refresh_token_repository,
-    )
 
     created_user = service.register_user(user)
 
@@ -54,16 +48,11 @@ def register(
 )
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db),
+    service: UserService = Depends(
+        get_user_service,
+    ),
 ):
-    user_repository = UserRepository(db)
-    refresh_token_repository = RefreshTokenRepository(db)
-
-    service = UserService(
-        user_repository,
-        refresh_token_repository,
-    )
-
+    
     user = service.authenticate_user(
         form_data.username,
         form_data.password,
@@ -99,16 +88,10 @@ def login(
 )
 def refresh(
     request: RefreshTokenRequest,
-    db: Session = Depends(get_db),
+    service: UserService = Depends(
+        get_user_service,
+    ),
 ):
-    user_repository = UserRepository(db)
-    refresh_token_repository = RefreshTokenRepository(db)
-
-    service = UserService(
-        user_repository,
-        refresh_token_repository,
-    )
-
     return service.refresh_access_token(
         request.refresh_token,
     )
@@ -119,16 +102,11 @@ def refresh(
 )
 def logout(
     request: LogoutRequest,
-    db: Session = Depends(get_db),
-):
-    user_repository = UserRepository(db)
-    refresh_token_repository = RefreshTokenRepository(db)
-
-    service = UserService(
-        user_repository,
-        refresh_token_repository,
+    service: UserService = Depends(
+        get_user_service,
     )
-
+):
+    
     service.logout(
         request.refresh_token,
     )
@@ -144,15 +122,10 @@ def logout(
 )
 def verify_email(
     token: str = Query(...),
-    db: Session = Depends(get_db),
-):
-    user_repository = UserRepository(db)
-    refresh_token_repository = RefreshTokenRepository(db)
-
-    service = UserService(
-        user_repository,
-        refresh_token_repository,
+    service: UserService = Depends(
+        get_user_service,
     )
+):
 
     service.verify_email(token)
 
@@ -167,16 +140,11 @@ def verify_email(
 )
 def resend_verification(
     request: ResendVerificationRequest,
-    db: Session = Depends(get_db),
-):
-    user_repository = UserRepository(db)
-    refresh_token_repository = RefreshTokenRepository(db)
-
-    service = UserService(
-        user_repository,
-        refresh_token_repository,
+    service: UserService = Depends(
+        get_user_service,
     )
-
+):
+    
     service.resend_verification_email(
         request.email,
     )
@@ -192,15 +160,10 @@ def resend_verification(
 )
 def forgot_password(
     request: ForgotPasswordRequest,
-    db: Session = Depends(get_db),
-):
-    user_repository = UserRepository(db)
-    refresh_token_repository = RefreshTokenRepository(db)
-
-    service = UserService(
-        user_repository,
-        refresh_token_repository,
+    service: UserService = Depends(
+        get_user_service,
     )
+):
 
     service.forgot_password(
         request.email,
@@ -220,16 +183,10 @@ def forgot_password(
 )
 def reset_password(
     request: ResetPasswordRequest,
-    db: Session = Depends(get_db),
-):
-
-    user_repository = UserRepository(db)
-    refresh_token_repository = RefreshTokenRepository(db)
-
-    service = UserService(
-        user_repository,
-        refresh_token_repository,
+    service: UserService = Depends(
+        get_user_service,
     )
+):
 
     service.reset_password(
         token=request.token,
