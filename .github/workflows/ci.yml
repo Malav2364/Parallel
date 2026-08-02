@@ -45,10 +45,10 @@ jobs:
       - name: Run Tests
         working-directory: parallel/services/identity
         run: |
-          if [ -d "tests" ]; then
+          if find tests -name "test_*.py" | grep -q .; then
             uv run pytest
           else
-            echo "No tests yet"
+            echo "No test files found. Skipping tests."
           fi
 
       - name: Build Docker Image
