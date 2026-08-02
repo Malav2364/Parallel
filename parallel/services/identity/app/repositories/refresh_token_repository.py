@@ -69,3 +69,29 @@ class RefreshTokenRepository:
         )
 
         self.db.commit()
+
+    def delete_expired(self) -> int:
+        deleted = (
+            self.db.query(RefreshToken)
+            .filter(
+                RefreshToken.expires_at < datetime.now(UTC),
+            )
+            .delete()
+        )
+
+        self.db.commit()
+
+        return deleted
+
+    def delete_revoked(self) -> int:
+        deleted = (
+            self.db.query(RefreshToken)
+            .filter(
+                RefreshToken.is_revoked == True,
+            )
+            .delete()
+        )
+
+        self.db.commit()
+
+        return deleted

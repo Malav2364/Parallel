@@ -20,6 +20,19 @@ class EmailService:
             autoescape=True,
         )
 
+    def _render_template(
+        self,
+        template_name: str,
+        **context,
+    ) -> str:
+        template = self.environment.get_template(
+            template_name,
+        )
+
+        return template.render(
+            **context,
+        )
+
     async def send_verification_email(
         self,
         email: str,
@@ -27,14 +40,11 @@ class EmailService:
         verification_link: str,
     ) -> None:
 
-        template = self.environment.get_template(
-            "verify_email.html",
-        )
-
-        html = template.render(
-            first_name=first_name,
-            verification_link=verification_link,
-        )
+        html = self._render_template(
+        "verify_email.html",
+        first_name=first_name,
+        verification_link=verification_link,
+    )
 
         await self.mail_client.send_email(
             to_email=email,
@@ -49,11 +59,8 @@ class EmailService:
         reset_link: str,
     ) -> None:
 
-        template = self.environment.get_template(
+        html = self._render_template(
             "reset_password.html",
-        )
-
-        html = template.render(
             first_name=first_name,
             reset_link=reset_link,
         )
