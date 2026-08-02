@@ -49,3 +49,23 @@ class RefreshTokenRepository:
         self.db.commit()
 
         return deleted
+
+    def revoke_all_for_user(
+        self,
+        user_id,
+    ) -> None:
+
+        (
+            self.db.query(RefreshToken)
+            .filter(
+                RefreshToken.user_id == user_id,
+                RefreshToken.is_revoked == False,
+            )
+            .update(
+                {
+                    RefreshToken.is_revoked: True,
+                }
+            )
+        )
+
+        self.db.commit()

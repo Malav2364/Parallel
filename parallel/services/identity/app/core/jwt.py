@@ -104,3 +104,23 @@ def decode_email_verification_token(
         raise InvalidTokenException()
 
     return payload
+
+def create_password_reset_token(
+    data: dict[str, Any],
+) -> str:
+    return _create_token(
+        data=data,
+        expires_delta=timedelta(hours=1),
+        token_type="password_reset",
+    )
+
+def decode_password_reset_token(
+    token: str,
+) -> dict[str, Any]:
+
+    payload = decode_token(token)
+
+    if payload.get("type") != "password_reset":
+        raise InvalidTokenException()
+
+    return payload

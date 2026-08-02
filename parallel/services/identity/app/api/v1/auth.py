@@ -15,7 +15,9 @@ from app.schemas.auth import (
     LogoutRequest,
     MessageResponse,
     TokenResponse,
-    ResendVerificationRequest
+    ResendVerificationRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest
 )
 from app.schemas.user import UserCreate, UserResponse
 from app.services.user_service import UserService
@@ -181,4 +183,59 @@ def resend_verification(
 
     return MessageResponse(
         message="Verification email sent successfully.",
+    )
+
+@router.post(
+    "/forgot-password",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+)
+def forgot_password(
+    request: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    user_repository = UserRepository(db)
+    refresh_token_repository = RefreshTokenRepository(db)
+
+    service = UserService(
+        user_repository,
+        refresh_token_repository,
+    )
+
+    service.forgot_password(
+        request.email,
+    )
+
+    return MessageResponse(
+        message=(
+            "If an account with that email exists, "
+            "a password reset email has been sent."
+        ),
+    )
+
+@router.post(
+    "/reset-password",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+)
+def reset_password(
+    request: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+
+    user_repository = UserRepository(db)
+    refresh_token_repository = RefreshTokenRepository(db)
+
+    service = UserService(
+        user_repository,
+        refresh_token_repository,
+    )
+
+    service.reset_password(
+        token=request.token,
+        new_password=request.new_password,
+    )
+
+    return MessageResponse(
+        message="Password reset successfully.",
     )
