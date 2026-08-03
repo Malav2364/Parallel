@@ -1,0 +1,36 @@
+version: "3.9"
+
+services: 
+
+  identity:
+    build:
+      context: ./services/identity
+    container_name: parallel-identity
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/identity:/app
+    environment:
+      APP_ENV: development
+    depends_on:
+      - postgres
+      - redis
+  postgres:
+    image: postgres:17
+
+    container_name: parallel-postgres
+    environment:
+      POSTGRES_USER: parallel_user
+      POSTGRES_PASSWORD: parallel123
+      POSTGRES_DB: parallel_identity_db
+    ports:
+        - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine
+    container_name: parallel-redis
+    ports:
+        - "6379:6379"
+volumes: 
+  postgres_data: 
