@@ -64,7 +64,7 @@ class UserService:
         )
 
         verification_link = (
-            f"{settings.FRONTEND_URL}/verify-email" f"?token={verification_token}"
+            f"{settings.FRONTEND_URL}/verify-email?token={verification_token}"
         )
 
         asyncio.run(
@@ -85,7 +85,7 @@ class UserService:
             }
         )
 
-        reset_link = f"{settings.FRONTEND_URL}/reset-password" f"?token={reset_token}"
+        reset_link = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
 
         asyncio.run(
             self.email_service.send_password_reset_email(

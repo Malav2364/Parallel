@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     SMTP_FROM_NAME: str = "Parallel Identity"
     SMTP_USE_TLS: bool = True
     FRONTEND_URL: str
+    ADMIN_EMAIL: str = "admin@example.com"
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
