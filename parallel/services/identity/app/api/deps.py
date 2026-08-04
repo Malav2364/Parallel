@@ -6,17 +6,16 @@ from app.core.database import get_db
 from app.core.jwt import decode_access_token
 from app.exceptions.auth import InvalidTokenException
 from app.models.user import User
+from app.repositories.permission_repository import PermissionRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
+from app.repositories.role_permission_repository import (
+    RolePermissionRepository,
+)
+from app.repositories.role_repository import RoleRepository
 from app.repositories.user_repository import UserRepository
+from app.services.permission_service import PermissionService
+from app.services.role_service import RoleService
 from app.services.user_service import UserService
-
-# def get_db() -> Generator[Session, None, None]:
-#     db = SessionLocal()
-
-#     try:
-#         yield db
-#     finally:
-#         db.close()
 
 
 def get_user_service(
@@ -55,3 +54,34 @@ def get_current_user(
         raise InvalidTokenException()
 
     return user
+
+
+# def get_role_service(
+#     db: Session = Depends(get_db),
+# ) -> RoleService:
+#     repository = RoleRepository(db)
+
+#     return RoleService(
+#         repository,
+#     )
+
+
+def get_permission_service(
+    db: Session = Depends(get_db),
+) -> PermissionService:
+    repository = PermissionRepository(db)
+
+    return PermissionService(
+        repository,
+    )
+
+
+def get_role_service(
+    db: Session = Depends(get_db),
+) -> RoleService:
+
+    return RoleService(
+        repository=RoleRepository(db),
+        permission_repository=PermissionRepository(db),
+        role_permission_repository=RolePermissionRepository(db),
+    )

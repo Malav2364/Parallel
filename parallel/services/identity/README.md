@@ -10,12 +10,22 @@ It is responsible for user registration, authentication, email verification, pas
 
 ## Authentication
 
-- User Registration
-- User Login
-- JWT Access Tokens
-- JWT Refresh Tokens
+## Features
+
+- JWT Authentication
 - Refresh Token Rotation
-- Logout
+- Email Verification
+- Forgot Password
+- Password Reset
+- Secure Logout
+- Role-Based Access Control (RBAC)
+- Dynamic Permission-Based Authorization
+- SQLAlchemy ORM
+- Alembic Database Migrations
+- PostgreSQL
+- Integration Testing with Pytest
+- Ruff Linting & Formatting
+- GitHub Actions CI
 
 ## Email Verification
 
@@ -23,10 +33,6 @@ It is responsible for user registration, authentication, email verification, pas
 - Verify Email
 - Resend Verification Email
 
-## Password Management
-
-- Forgot Password
-- Reset Password
 
 ## Security
 
@@ -64,28 +70,22 @@ It is responsible for user registration, authentication, email verification, pas
 
 # Folder Structure
 
-```
-identity/
-│
-├── app/
-│   ├── api/
-│   ├── core/
-│   ├── exceptions/
-│   ├── middleware/
-│   ├── models/
-│   ├── repositories/
-│   ├── schemas/
-│   ├── services/
-│   └── templates/
-│
-├── tests/
-│
-├── alembic/
-│
-├── Dockerfile
-├── pyproject.toml
-└── README.md
-```
+## Project Structure
+
+app/
+├── api/
+├── core/
+├── exceptions/
+├── middleware/
+├── models/
+├── repositories/
+├── schemas/
+├── services/
+└── utils/
+
+migrations/
+scripts/
+tests/
 
 ---
 
@@ -144,6 +144,48 @@ Access Token   Refresh Token
                  Logout
 ```
 
+---
+
+# RBAC Flow
+
+```
+User
+ │
+ ▼
+Role
+ │
+ ▼
+RolePermission
+ │
+ ▼
+Permission
+ │
+ ▼
+require_permission()
+ │
+ ▼
+Allow / Deny
+```
+
+# Permissions are enforced using the `require_permission()` dependency.
+
+Example:
+
+```python
+@router.post("/roles")
+def create_role(
+    current_user: User = Depends(
+        require_permission("manage_roles"),
+    ),
+):
+```
+## Seed Default Roles & Permissions
+
+Run:
+
+```bash
+python -m scripts.seed_roles_permissions
+```
 ---
 
 # API Endpoints

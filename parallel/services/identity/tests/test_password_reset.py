@@ -19,7 +19,7 @@ def test_forgot_password_success(client):
     assert response.status_code == 200
 
     assert response.json()["message"] == (
-        "If an account with that email exists, " "a password reset email has been sent."
+        "If an account with that email exists, a password reset email has been sent."
     )
 
 
@@ -34,7 +34,7 @@ def test_forgot_password_unknown_email(client):
     assert response.status_code == 200
 
     assert response.json()["message"] == (
-        "If an account with that email exists, " "a password reset email has been sent."
+        "If an account with that email exists, a password reset email has been sent."
     )
 
 
