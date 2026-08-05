@@ -1,5 +1,9 @@
 from fastapi import APIRouter, Depends, Query, Response, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
+    OAuth2PasswordRequestForm,
+)
 
 from app.api.deps import get_user_service
 from app.core.jwt import (
@@ -15,9 +19,12 @@ from app.schemas.auth import (
     ResendVerificationRequest,
     ResetPasswordRequest,
     TokenResponse,
+    TokenValidationResponse,
 )
 from app.schemas.user import UserCreate, UserResponse
 from app.services.user_service import UserService
+
+security = HTTPBearer()
 
 router = APIRouter()
 
@@ -196,4 +203,16 @@ def reset_password(
 
     return MessageResponse(
         message="Password reset successfully.",
+    )
+
+@router.post(
+    "/validate-token",
+    response_model=TokenValidationResponse,
+)
+def validate_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    service: UserService = Depends(get_user_service),
+):
+    return service.validate_access_token(
+        credentials.credentials,
     )

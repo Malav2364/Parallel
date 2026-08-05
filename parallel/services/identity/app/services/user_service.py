@@ -8,6 +8,7 @@ from app.core.jwt import (
     create_email_verification_token,
     create_password_reset_token,
     create_refresh_token,
+    decode_access_token,
     decode_email_verification_token,
     decode_password_reset_token,
     decode_refresh_token,
@@ -32,7 +33,10 @@ from app.exceptions.auth import (
 )
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
+from app.repositories.permission_repository import PermissionRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
+from app.repositories.role_permission_repository import RolePermissionRepository
+from app.repositories.role_repository import RoleRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import RefreshTokenResponse
 from app.schemas.user import UserCreate
@@ -44,10 +48,16 @@ class UserService:
         self,
         repository: UserRepository,
         refresh_token_repository: RefreshTokenRepository,
+        role_repository: RoleRepository,
+        permission_repository: PermissionRepository,
+        role_permission_repository: RolePermissionRepository,
     ):
         self.repository = repository
         self.refresh_token_repository = refresh_token_repository
         self.email_service = EmailService()
+        self.role_repository = role_repository
+        self.permission_repository = permission_repository
+        self.role_permission_repository = role_permission_repository
 
     # ==========================================
     # Private Helpers
@@ -168,6 +178,59 @@ class UserService:
 
         return user
 
+    def validate_access_token(
+        self,
+        token: str,
+    ):
+        payload = decode_access_token(token)
+
+        email = payload.get("sub")
+
+        if email is None:
+            raise InvalidTokenException()
+
+        user = self.repository.get_by_email(email)
+
+        if user is None:
+            raise InvalidTokenException()
+
+        role = None
+        permissions = []
+
+        if user.role_id:
+
+            role_obj = self.role_repository.get_by_id(
+                user.role_id,
+            )
+
+            if role_obj:
+
+                role = role_obj.name
+
+                role_permissions = (
+                    self.role_permission_repository.get_permissions_for_role(
+                        role_obj.id,
+                    )
+                )
+
+                for role_permission in role_permissions:
+
+                    permission = self.permission_repository.get_by_id(
+                        role_permission.permission_id,
+                    )
+
+                    if permission:
+                        permissions.append(
+                            permission.name,
+                        )
+
+        return {
+            "user_id": str(user.id),
+            "email": user.email,
+            "role": role,
+            "permissions": permissions,
+        }
+    
     def refresh_access_token(
         self,
         refresh_token: str,
