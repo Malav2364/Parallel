@@ -27,6 +27,11 @@ def get_user_service(
     return UserService(
         repository=user_repository,
         refresh_token_repository=refresh_token_repository,
+        # repository=UserRepository(db),
+        # refresh_token_repository=RefreshTokenRepository(db),
+        role_repository=RoleRepository(db),
+        permission_repository=PermissionRepository(db),
+        role_permission_repository=RolePermissionRepository(db),
     )
 
 
@@ -54,16 +59,6 @@ def get_current_user(
         raise InvalidTokenException()
 
     return user
-
-
-# def get_role_service(
-#     db: Session = Depends(get_db),
-# ) -> RoleService:
-#     repository = RoleRepository(db)
-
-#     return RoleService(
-#         repository,
-#     )
 
 
 def get_permission_service(
