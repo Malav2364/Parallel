@@ -21,11 +21,13 @@ class RefreshTokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
 
+
 class TokenValidationResponse(BaseModel):
     user_id: str
     email: str
     role: str | None = None
-    permissions: list[str]  
+    permissions: list[str]
+
 
 class LogoutRequest(BaseModel):
     refresh_token: str

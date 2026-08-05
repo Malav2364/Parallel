@@ -56,5 +56,3 @@ class RolePermissionRepository:
             )
             .all()
         )
-
-    

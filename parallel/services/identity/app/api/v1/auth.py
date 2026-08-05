@@ -205,6 +205,7 @@ def reset_password(
         message="Password reset successfully.",
     )
 
+
 @router.post(
     "/validate-token",
     response_model=TokenValidationResponse,

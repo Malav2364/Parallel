@@ -230,7 +230,7 @@ class UserService:
             "role": role,
             "permissions": permissions,
         }
-    
+
     def refresh_access_token(
         self,
         refresh_token: str,
