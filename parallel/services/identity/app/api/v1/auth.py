@@ -214,6 +214,7 @@ def validate_token(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     service: UserService = Depends(get_user_service),
 ):
+
     return service.validate_access_token(
         credentials.credentials,
     )
