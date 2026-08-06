@@ -1,0 +1,27 @@
+[project]
+name = "parallel-projects"
+version = "0.1.0"
+description = "Projects Service"
+requires-python = ">=3.13"
+
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "sqlalchemy",
+    "alembic",
+    "pydantic-settings",
+    "httpx",
+    "psycopg[binary]>=3.3.4",
+]
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "pytest",
+    "ruff",
+]
+[tool.ruff.lint]
+select = ["E", "F", "B", "I"]
+ignore = ["B008"]
+[tool.ruff.lint.per-file-ignores]
+"migrations/**/*.py" = ["E501"]

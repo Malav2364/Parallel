@@ -15,6 +15,25 @@ router = APIRouter()
 
 
 @router.api_route(
+    "/api/{service}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+)
+async def proxy_root(
+    service: str,
+    request: Request,
+    proxy_service: ProxyService = Depends(get_proxy_service),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    return await proxy_request(
+        service=service,
+        path="",
+        request=request,
+        proxy_service=proxy_service,
+        auth_service=auth_service,
+    )
+
+
+@router.api_route(
     "/api/{service}/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
 )
@@ -31,13 +50,14 @@ async def proxy_request(
             detail="Unknown service",
         )
 
-    target_url = f"{ROUTES[service]}/{path}"
+    target_url = ROUTES[service].rstrip("/")
+
+    if path:
+        target_url += "/" + path.lstrip("/")
 
     # ---------------------------
     # Validate Access Token
     # ---------------------------
-
-    # auth_header = request.headers.get("Authorization")
 
     user = None
 
@@ -80,7 +100,7 @@ async def proxy_request(
     # ---------------------------
 
     headers = filter_headers(
-    dict(request.headers),
+        dict(request.headers),
     )
 
     if user:
