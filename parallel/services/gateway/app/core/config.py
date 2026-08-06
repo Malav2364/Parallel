@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str
     IDENTITY_SERVICE_URL: str
+    PROJECTS_SERVICE_URL: str
     LOG_LEVEL: str
     REDIS_URL: str
     model_config = SettingsConfigDict(

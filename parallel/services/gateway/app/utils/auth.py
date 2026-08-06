@@ -6,7 +6,4 @@ def is_public_route(
     path: str,
     method: str,
 ) -> bool:
-    return (
-        service in PUBLIC_ROUTES
-        and (method.upper(), path) in PUBLIC_ROUTES[service]
-    )
+    return service in PUBLIC_ROUTES and (method.upper(), path) in PUBLIC_ROUTES[service]

@@ -13,6 +13,7 @@ class ProxyService:
         params=None,
         content=None,
     ):
+
         try:
             return await self.client.request(
                 method=method,
@@ -20,6 +21,7 @@ class ProxyService:
                 headers=headers,
                 params=params,
                 content=content,
+                follow_redirects=True,
             )
 
         except httpx.ConnectError:
