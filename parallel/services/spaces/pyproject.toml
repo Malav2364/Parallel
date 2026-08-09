@@ -1,0 +1,25 @@
+[project]
+name = "spaces"
+version = "0.1.0"
+description = "Space Service for Parallel Systems"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.19.0",
+    "black>=26.5.1",
+    "fastapi>=0.141.1",
+    "pios-kernel",
+    "psycopg[binary]>=3.3.4",
+    "pydantic-settings>=2.15.0",
+    "python-dotenv>=1.2.2",
+    "ruff>=0.16.2",
+    "sqlalchemy>=2.0.51",
+    "uuid-utils>=0.17.0",
+    "uvicorn>=0.52.1",
+]
+
+[tool.uv.sources]
+pios-kernel = { path = "../../pios_kernel", editable = true }
+
+[tool.ruff.lint]
+ignore = ["B008"]
