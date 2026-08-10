@@ -2,7 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY . . 
+# Copy the pios_kernel and spaces service
+COPY pios_kernel/ /app/pios_kernel/
+COPY services/spaces/ /app/services/spaces/
+
+WORKDIR /app/services/spaces
 
 RUN pip install uv 
 RUN uv sync
