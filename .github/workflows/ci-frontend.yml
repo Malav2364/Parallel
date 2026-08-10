@@ -6,12 +6,18 @@ on:
     paths:
       - 'parallel/apps/**'
       - 'parallel/packages/**'
+      - 'parallel/turbo.json'
+      - 'parallel/package.json'
+      - 'parallel/pnpm-workspace.yaml'
       - '.github/workflows/ci-frontend.yml'
   pull_request:
     branches: [ develop, main, feature/CI-for-microservices ]
     paths:
       - 'parallel/apps/**'
       - 'parallel/packages/**'
+      - 'parallel/turbo.json'
+      - 'parallel/package.json'
+      - 'parallel/pnpm-workspace.yaml'
       - '.github/workflows/ci-frontend.yml'
 
 jobs:
