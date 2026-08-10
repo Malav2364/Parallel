@@ -1,0 +1,66 @@
+name: Context Service CI
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+      - feature/CI-for-microservices
+    paths:
+      - 'parallel/services/context/**'
+      - '.github/workflows/ci-context.yml'
+  pull_request:
+    branches:
+      - develop
+      - main
+      - feature/CI-for-microservices
+    paths:
+      - 'parallel/services/context/**'
+      - '.github/workflows/ci-context.yml'
+
+jobs:
+  context_service:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    defaults:
+      run:
+        working-directory: parallel/services/context
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install Dependencies
+        run: uv sync
+
+      - name: Check Python Version
+        run: python --version
+
+      - name: Ruff Lint
+        run: uv run ruff check .
+
+      - name: Black Formatting
+        run: uv run black --check .
+
+      - name: Run Tests
+        run: |
+          if [ -d "tests" ]; then
+            uv run pytest --cov=app --cov-report=term-missing
+          else
+            echo "No tests found"
+          fi
+
+      # - name: Build Docker Image
+      #   run: docker build -t parallel-context .
