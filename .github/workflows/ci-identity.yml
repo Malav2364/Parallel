@@ -74,4 +74,4 @@ jobs:
           fi
 
       - name: Build Docker Image
-        run: docker build -t parallel-identity .
+        run: docker build -f Dockerfile.prod -t parallel-identity .

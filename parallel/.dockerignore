@@ -1,0 +1,14 @@
+**/.venv
+**/__pycache__
+**/.ruff_cache
+**/.pytest_cache
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.git
+**/.github
+**/node_modules
+**/dist
+**/.next
+**/pnpm-lock.yaml
+**/pnpm-workspace.yaml

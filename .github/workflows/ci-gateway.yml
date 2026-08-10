@@ -63,5 +63,6 @@ jobs:
             echo "No tests found"
           fi
 
-      # - name: Build Docker Image
-      #   run: docker build -t parallel-gateway .
+      - name: Build Docker Image
+        run: docker build -f Dockerfile.prod -t parallel-gateway .
+

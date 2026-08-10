@@ -68,5 +68,5 @@ jobs:
             echo "No tests found"
           fi
 
-      # - name: Build Docker Image
-      #   run: docker build -t parallel-projects .
+      - name: Build Docker Image
+        run: docker build -f Dockerfile.prod -t parallel-projects .
