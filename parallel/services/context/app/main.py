@@ -16,7 +16,7 @@ app.include_router(router)
 app.include_router(health_router)
 
 
-@app.get("/")
+@app.get("/", tags=["Health"])
 def root():
     return {
         "message": "Welcome to Parallel Context Service",

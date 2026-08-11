@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status, HTTPException
 
 from app.api.deps import get_project_service
 from app.schemas.project import ProjectCreate, ProjectResponse, ProjectUpdate
 from app.services.project_service import ProjectService
+from app.schemas.project_activity import ProjectActivityUpdate
 
 router = APIRouter()
 
@@ -32,11 +33,14 @@ def create_project(
     response_model=list[ProjectResponse],
 )
 def get_projects(
+    http_request: Request,
     service: ProjectService = Depends(
         get_project_service,
     ),
 ):
-    return service.list_projects()
+    owner_id = http_request.headers.get("x-user-id")
+
+    return service.list_projects(owner_id)
 
 
 @router.get(
@@ -53,6 +57,29 @@ def get_project(
         project_id,
     )
 
+@router.patch(
+    "/{project_id}/activity",
+)
+def update_project_activity(
+    project_id: str,
+    request: ProjectActivityUpdate,
+    service: ProjectService = Depends(
+        get_project_service,
+    ),
+):
+    project = service.update_activity(
+        project_id=project_id,
+        current_focus=request.current_focus,
+        latest_activity=request.latest_activity,
+    )
+
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found",
+        )
+
+    return project
 
 @router.put(
     "/{project_id}",
@@ -69,7 +96,6 @@ def update_project(
         project_id,
         request,
     )
-
 
 @router.delete(
     "/{project_id}",

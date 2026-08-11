@@ -29,3 +29,13 @@ class Project(Base):
         String,
         nullable=False,
     )
+
+    current_focus: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+    )
+
+    latest_activity: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+    )

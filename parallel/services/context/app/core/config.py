@@ -7,6 +7,12 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str
 
+    WORKSPACE_SERVICE_URL: str
+    PROJECTS_SERVICE_URL: str
+
+    GEMINI_API_KEY: str
+    CONTEXT_MODEL: str
+
     LOG_LEVEL: str = "INFO"
 
     model_config = SettingsConfigDict(
