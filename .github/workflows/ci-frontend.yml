@@ -1,0 +1,49 @@
+name: Frontend & Packages CI
+
+on:
+  push:
+    branches: [ develop, main, feature/CI-for-microservices ]
+    paths:
+      - 'parallel/apps/**'
+      - 'parallel/packages/**'
+      - 'parallel/turbo.json'
+      - 'parallel/package.json'
+      - 'parallel/pnpm-workspace.yaml'
+      - '.github/workflows/ci-frontend.yml'
+  pull_request:
+    branches: [ develop, main, feature/CI-for-microservices ]
+    paths:
+      - 'parallel/apps/**'
+      - 'parallel/packages/**'
+      - 'parallel/turbo.json'
+      - 'parallel/package.json'
+      - 'parallel/pnpm-workspace.yaml'
+      - '.github/workflows/ci-frontend.yml'
+
+jobs:
+  build:
+    name: Build, Lint, and Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: parallel # Root of the turborepo
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      - name: Build & Lint with Turbo
+        run: pnpm turbo run build lint test

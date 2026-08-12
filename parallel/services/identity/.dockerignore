@@ -1,8 +1,9 @@
-.venv/
-__pycache__/
-.pytest_cache/
-.git/
-.env
-.idea/
-.vscode/
-parallel/
+.venv
+__pycache__
+.ruff_cache
+.pytest_cache
+*.pyc
+*.pyo
+*.pyd
+.git
+.github

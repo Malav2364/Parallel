@@ -25,8 +25,17 @@ class ProjectService:
         request: ProjectCreate,
         owner_id: str,
     ):
+        normalized_name = request.name.strip()
+        existing = self.repository.get_by_owner_and_name(
+            owner_id,
+            normalized_name,
+        )
+
+        if existing:
+            return existing
+
         project = Project(
-            name=request.name,
+            name=normalized_name,
             description=request.description,
             owner_id=owner_id,
         )
@@ -43,8 +52,11 @@ class ProjectService:
 
         return project
 
-    def list_projects(self):
-        return self.repository.get_all()
+    def list_projects(
+        self,
+        owner_id: str,
+    ):
+        return self.repository.get_by_owner(owner_id)
 
     def get_project(
         self,
@@ -74,6 +86,30 @@ class ProjectService:
             project.description = request.description
 
         return self.repository.update(project)
+
+    def update_activity(
+        self,
+        project_id: str,
+        current_focus: str | None = None,
+        latest_activity: str | None = None,
+        update_current_focus: bool = False,
+        update_latest_activity: bool = False,
+    ):
+        project = self.repository.get_by_id(project_id)
+
+        if project is None:
+            return None
+
+        if update_current_focus:
+            project.current_focus = current_focus
+
+        if update_latest_activity:
+            project.latest_activity = latest_activity
+
+        self.repository.db.commit()
+        self.repository.db.refresh(project)
+
+        return project
 
     def delete_project(
         self,
