@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
@@ -27,6 +28,20 @@ class ProjectRepository:
         owner_id: str,
     ) -> list[Project]:
         return self.db.query(Project).filter(Project.owner_id == owner_id).all()
+
+    def get_by_owner_and_name(
+        self,
+        owner_id: str,
+        name: str,
+    ) -> Project | None:
+        return (
+            self.db.query(Project)
+            .filter(
+                Project.owner_id == owner_id,
+                func.lower(Project.name) == name.strip().lower(),
+            )
+            .first()
+        )
 
     def get_all(
         self,

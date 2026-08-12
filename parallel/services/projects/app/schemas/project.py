@@ -16,5 +16,7 @@ class ProjectResponse(BaseModel):
     name: str
     description: str | None
     owner_id: str
+    current_focus: str | None = None
+    latest_activity: str | None = None 
 
     model_config = {"from_attributes": True}

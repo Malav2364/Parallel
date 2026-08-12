@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pios_kernel.enums import SpaceType, Visibility
+from pios_kernel.enums import SpaceSource, SpaceType, Visibility
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -13,6 +13,7 @@ class SpaceCreateRequest(BaseModel):
     description: str | None = None
     type: SpaceType = SpaceType.CUSTOM
     visibility: Visibility = Visibility.PRIVATE
+    source: SpaceSource = SpaceSource.USER
     icon: str | None = Field(default=None, max_length=100)
     color: str | None = Field(default=None, max_length=20)
 

@@ -2,7 +2,6 @@ import re
 from uuid import uuid4
 
 from pios_kernel.Constants import DEFAULT_SPACE_COLOR, DEFAULT_SPACE_ICON
-from pios_kernel.enums import SpaceSource
 
 from app.models import SpaceEntity, WorkspaceEntity
 from app.repositories import SpaceRepository, WorkspaceRepository
@@ -54,8 +53,9 @@ class SpaceService:
             return None
 
         slug = self._slugify(request.slug or request.name)
-        if self.repository.get_by_slug(workspace.id, slug) is not None:
-            raise ValueError(f"A space with slug '{slug}' already exists")
+        existing = self.repository.get_by_slug(workspace.id, slug)
+        if existing is not None:
+            return existing
 
         space = SpaceEntity(
             id=str(uuid4()),
@@ -65,7 +65,7 @@ class SpaceService:
             description=request.description,
             type=request.type.value,
             visibility=request.visibility.value,
-            source=SpaceSource.USER.value,
+            source=request.source.value,
             icon=request.icon or DEFAULT_SPACE_ICON,
             color=request.color or DEFAULT_SPACE_COLOR,
         )
