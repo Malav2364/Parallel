@@ -12,6 +12,7 @@ dependencies = [
     "pios-kernel",
     "psycopg[binary]>=3.3.4",
     "pydantic-settings>=2.14.2",
+    "pytest>=9.1.1",
     "python-dotenv>=1.2.2",
     "python-json-logger>=4.1.0",
     "sqlalchemy>=2.0.51",

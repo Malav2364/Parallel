@@ -9,9 +9,7 @@ logger.setLevel(logging.INFO)
 
 handler = logging.StreamHandler(sys.stdout)
 
-formatter = JsonFormatter(
-    "%(asctime)s %(levelname)s %(message)s"
-)
+formatter = JsonFormatter("%(asctime)s %(levelname)s %(message)s")
 
 handler.setFormatter(formatter)
 

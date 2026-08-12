@@ -3,7 +3,7 @@ version: "3.9"
 services:
   postgres:
     image: postgres:17
-    container_name: parallel-postgres
+    container_name: parallel-postgres-prod
     environment:
       POSTGRES_USER: parallel_user
       POSTGRES_PASSWORD: parallel123
@@ -11,7 +11,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_prod_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U parallel_user -d parallel_identity_db"]
@@ -21,7 +21,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: parallel-redis
+    container_name: parallel-redis-prod
     ports:
       - "6379:6379"
     healthcheck:
@@ -33,23 +33,22 @@ services:
   identity:
     build:
       context: ./services/identity
-    container_name: parallel-identity
+      dockerfile: Dockerfile.prod
+    image: parallel-identity-prod
+    container_name: parallel-identity-prod
     ports:
       - "8001:8000"
-    volumes:
-      - ./services/identity:/app
     environment:
-      APP_ENV: development
       DATABASE_URL: postgresql+psycopg://parallel_user:parallel123@postgres:5432/parallel_identity_db
-      JWT_SECRET_KEY: development-secret-key-change-me
+      JWT_SECRET_KEY: production-secret-key-change-me
       JWT_ALGORITHM: HS256
       JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 30
       JWT_REFRESH_TOKEN_EXPIRE_DAYS: 7
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: 587
-      SMTP_USERNAME: dev-email@gmail.com
-      SMTP_PASSWORD: dev-password
-      SMTP_FROM: dev-email@gmail.com
+      SMTP_USERNAME: prod-email@gmail.com
+      SMTP_PASSWORD: prod-password
+      SMTP_FROM: prod-email@gmail.com
       FRONTEND_URL: http://localhost:3000
     depends_on:
       postgres:
@@ -60,23 +59,22 @@ services:
   projects:
     build:
       context: ./services/projects
-    container_name: parallel-projects
+      dockerfile: Dockerfile.prod
+    image: parallel-projects-prod
+    container_name: parallel-projects-prod
     ports:
       - "8002:8000"
-    volumes:
-      - ./services/projects:/app
     environment:
-      APP_ENV: development
       DATABASE_URL: postgresql+psycopg://parallel_user:parallel123@postgres:5432/projects_db
-      JWT_SECRET_KEY: development-secret-key-change-me
+      JWT_SECRET_KEY: production-secret-key-change-me
       JWT_ALGORITHM: HS256
       JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 30
       JWT_REFRESH_TOKEN_EXPIRE_DAYS: 7
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: 587
-      SMTP_USERNAME: dev-email@gmail.com
-      SMTP_PASSWORD: dev-password
-      SMTP_FROM: dev-email@gmail.com
+      SMTP_USERNAME: prod-email@gmail.com
+      SMTP_PASSWORD: prod-password
+      SMTP_FROM: prod-email@gmail.com
       FRONTEND_URL: http://localhost:3000
       ADMIN_EMAIL: admin@example.com
     depends_on:
@@ -86,13 +84,11 @@ services:
   spaces:
     build:
       context: ./
-      dockerfile: services/spaces/Dockerfile
-    container_name: parallel-spaces
+      dockerfile: services/spaces/Dockerfile.prod
+    image: parallel-spaces-prod
+    container_name: parallel-spaces-prod
     ports:
       - "8003:8000"
-    volumes:
-      - ./services/spaces:/app/services/spaces
-      - ./pios_kernel:/app/pios_kernel
     environment:
       DATABASE_URL: postgresql+psycopg://parallel_user:parallel123@postgres:5432/pios_workspace
     depends_on:
@@ -102,11 +98,11 @@ services:
   context:
     build:
       context: ./services/context
-    container_name: parallel-context
+      dockerfile: Dockerfile.prod
+    image: parallel-context-prod
+    container_name: parallel-context-prod
     ports:
       - "8004:8000"
-    volumes:
-      - ./services/context:/app
     environment:
       DATABASE_URL: postgresql+psycopg://parallel_user:parallel123@postgres:5432/parallel_context
       APP_NAME: Parallel Context Service
@@ -119,21 +115,21 @@ services:
   gateway:
     build:
       context: ./services/gateway
-    container_name: parallel-gateway
+      dockerfile: Dockerfile.prod
+    image: parallel-gateway-prod
+    container_name: parallel-gateway-prod
     ports:
       - "8000:8000"
-    volumes:
-      - ./services/gateway:/app
     environment:
       APP_NAME: Parallel API Gateway
       APP_VERSION: 1.0.0
-      APP_ENV: development
+      APP_ENV: production
       HOST: 0.0.0.0
       PORT: 8000
       IDENTITY_SERVICE_URL: http://identity:8000
       PROJECTS_SERVICE_URL: http://projects:8000/api/v1/projects
       WORKSPACE_SERVICE_URL: http://spaces:8000/api/v1
-      JWT_SECRET_KEY: development-secret-key-change-me
+      JWT_SECRET_KEY: production-secret-key-change-me
       JWT_ALGORITHM: HS256
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
@@ -150,4 +146,4 @@ services:
         condition: service_healthy
 
 volumes:
-  postgres_data:
+  postgres_prod_data:

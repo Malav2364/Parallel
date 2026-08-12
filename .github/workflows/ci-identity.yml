@@ -1,18 +1,27 @@
-name: Parallel CI
+name: Identity Service CI
 
 on:
   push:
     branches:
       - develop
       - main
+      - feature/CI-for-microservices
+    paths:
+      # Only run this CI when files in the identity service or this CI file itself change
+      - 'parallel/services/identity/**'
+      - '.github/workflows/ci-identity.yml'
   pull_request:
     branches:
       - develop
       - main
+      - feature/CI-for-microservices
+    paths:
+      - 'parallel/services/identity/**'
+      - '.github/workflows/ci-identity.yml'
 
 jobs:
   identity_service:
-    name: Identity Service CI
+    name: Build & Test
     runs-on: ubuntu-latest
 
     env:
@@ -65,4 +74,4 @@ jobs:
           fi
 
       - name: Build Docker Image
-        run: docker build -t parallel-identity .
+        run: docker build -f Dockerfile.prod -t parallel-identity .

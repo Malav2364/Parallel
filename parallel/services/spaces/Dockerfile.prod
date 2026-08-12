@@ -1,0 +1,45 @@
+# Stage 1: Build virtual environment
+FROM python:3.13-slim AS builder
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+WORKDIR /app
+
+# Enable bytecode compilation
+ENV UV_COMPILE_BYTECODE=1
+
+# Copy local dependencies and project
+COPY pios_kernel/ /app/pios_kernel/
+COPY services/spaces/ /app/services/spaces/
+
+WORKDIR /app/services/spaces
+
+# Install dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
+
+# Stage 2: Final image
+FROM python:3.13-slim
+
+WORKDIR /app/services/spaces
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/services/spaces/.venv/bin:$PATH"
+
+# Copy virtual environment and source code
+COPY --from=builder /app/pios_kernel /app/pios_kernel
+COPY --from=builder /app/services/spaces /app/services/spaces
+
+# Create a non-privileged user to run the app
+RUN groupadd -g 10001 appgroup && \
+    useradd -u 10001 -g appgroup -s /bin/sh appuser && \
+    chown -R appuser:appgroup /app
+
+USER appuser
+
+EXPOSE 8000
+
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
