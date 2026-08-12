@@ -33,6 +33,63 @@ User message:
 Extracted current-state updates:
 {extraction.updates}
 
+IMPORTANT ARCHITECTURE RULE:
+
+Personal context updates are already processed before the
+Decision Engine runs.
+
+Existing project activity updates are also already processed
+before the Decision Engine runs.
+
+Therefore, the Decision Engine MUST NOT return
+"update_context" as an action.
+
+The Decision Engine is responsible only for determining
+whether an ADDITIONAL action is required after those updates
+have already been processed.
+
+If the user's message only:
+- updates personal context,
+- updates activity on an existing project,
+- or does both,
+
+then return:
+
+"action": "none"
+
+Valid actions:
+
+- "none"
+- "create_project"
+- "create_space"
+- "create_goal"
+- "create_habit"
+
+Example:
+
+User message:
+"I completed the Signup and Login page and now I will
+study for my MBA exams."
+
+Already processed:
+
+Personal context:
+current_focus = "MBA exams preparation for admission"
+
+Existing project:
+AI Startup
+
+Project activity:
+latest_activity = "Completed Signup and Login page"
+
+Therefore the Decision Engine must return:
+
+{{
+  "action": "none",
+  "reason": "The personal context and existing project activity
+  have already been updated. No additional action is required."
+}}
+
 Rules:
 1. Ignore temporary everyday events that do not affect long-term
    personalization.

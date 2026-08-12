@@ -40,12 +40,18 @@ class ProjectsClient:
         current_focus: str | None,
         latest_activity: str | None,
     ) -> dict:
-        response = httpx.patch(
-            f"{self.base_url}/projects/{project_id}/activity",
-            json={
+        activity_update = {
+            key: value
+            for key, value in {
                 "current_focus": current_focus,
                 "latest_activity": latest_activity,
-            },
+            }.items()
+            if value is not None
+        }
+
+        response = httpx.patch(
+            f"{self.base_url}/projects/{project_id}/activity",
+            json=activity_update,
             timeout=10.0,
         )
 

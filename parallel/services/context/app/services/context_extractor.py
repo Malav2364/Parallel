@@ -72,6 +72,11 @@ Rules:
 13. Capture an explicit transition as a meaningful current-state field such
     as career_status or current_focus.
 14. Do not infer a new occupation unless the user explicitly establishes it.
+15. Do not store project progress, project status, completed tasks, or
+    activity updates in the user's durable context. Those belong to the
+    Project Activity layer.
+16. Never return a top-level "projects" key. Existing projects are owned by
+    the Projects Service, not user context.
 """
 
         response = self.client.models.generate_content(
@@ -109,6 +114,8 @@ Rules:
 
             if new_goals:
                 updates["goals_to_add"] = new_goals
+
+        updates.pop("projects", None)
 
         return ContextExtraction(
             updates=updates,

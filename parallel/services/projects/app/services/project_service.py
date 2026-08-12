@@ -92,16 +92,18 @@ class ProjectService:
         project_id: str,
         current_focus: str | None = None,
         latest_activity: str | None = None,
+        update_current_focus: bool = False,
+        update_latest_activity: bool = False,
     ):
         project = self.repository.get_by_id(project_id)
 
         if project is None:
             return None
 
-        if current_focus is not None:
+        if update_current_focus:
             project.current_focus = current_focus
 
-        if latest_activity is not None:
+        if update_latest_activity:
             project.latest_activity = latest_activity
 
         self.repository.db.commit()

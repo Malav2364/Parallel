@@ -13,7 +13,7 @@ SignalType = Literal[
 
 ActionType = Literal[
     "none",
-    "update_context",
+    # "update_context",
     "create_goal",
     "create_habit",
     "create_project",

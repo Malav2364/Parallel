@@ -9,6 +9,7 @@ from app.api.deps import (
     get_project_resolver,
     get_projects_client,
 )
+from app.clients.projects_client import ProjectsClient
 from app.schemas import (
     ContextAnalyzeRequest,
     ContextDecision,
@@ -28,7 +29,6 @@ from app.services import (
 from app.services.project_activity_extractor import (
     ProjectActivityExtractor,
 )
-from app.clients.projects_client import ProjectsClient
 
 router = APIRouter()
 
@@ -38,6 +38,23 @@ def _to_response(context) -> ContextResponse:
         user_id=context.user_id,
         context=context.context,
         version=context.version,
+    )
+
+
+def _find_project_by_id(
+    projects: list[dict],
+    project_id: str | None,
+) -> dict | None:
+    if not project_id:
+        return None
+
+    return next(
+        (
+            project
+            for project in projects
+            if project["id"] == project_id
+        ),
+        None,
     )
 
 
@@ -137,77 +154,9 @@ def process_context(
         get_projects_client,
     ),
 ):
-    # ---------------------------------------------------------
-    # 1. Load current user context
-    # ---------------------------------------------------------
-
     context = context_service.get_context(
         x_user_id,
     )
-
-    # ---------------------------------------------------------
-    # 2. Try to resolve the message to an existing project
-    # ---------------------------------------------------------
-
-    resolution = resolver.resolve(
-        user_id=x_user_id,
-        user_input=request.message,
-    )
-
-    # ---------------------------------------------------------
-    # 3. Existing project found
-    # ---------------------------------------------------------
-
-    if resolution.matched:
-        projects = projects_client.list_projects(
-            x_user_id,
-        )
-
-        project = next(
-            (
-                project
-                for project in projects
-                if project["id"] == resolution.project_id
-            ),
-            None,
-        )
-
-        if project is None:
-            return {
-                "type": "project_resolution_error",
-                "resolution": resolution,
-                "message": "Resolved project could not be found.",
-            }
-
-        # Extract what changed inside the project
-        activity = activity_extractor.extract(
-            user_input=request.message,
-            project=project,
-        )
-
-        updated_project = None
-
-        # Only update the project when useful activity exists
-        if (
-            activity.current_focus is not None
-            or activity.latest_activity is not None
-        ):
-            updated_project = projects_client.update_activity(
-                project_id=resolution.project_id,
-                current_focus=activity.current_focus,
-                latest_activity=activity.latest_activity,
-            )
-
-        return {
-            "type": "existing_project",
-            "resolution": resolution,
-            "activity": activity,
-            "project": updated_project,
-        }
-
-    # ---------------------------------------------------------
-    # 4. No existing project found
-    # ---------------------------------------------------------
 
     extraction = extractor.extract(
         user_input=request.message,
@@ -219,33 +168,72 @@ def process_context(
         updates=extraction.updates,
     )
 
-    # ---------------------------------------------------------
-    # 5. Decide what PIOS should do
-    # ---------------------------------------------------------
+    resolution = resolver.resolve(
+        user_id=x_user_id,
+        user_input=request.message,
+    )
+
+    activity = None
+    activity_project = None
+    resolution_error = None
+
+    if resolution.matched:
+        projects = projects_client.list_projects(
+            x_user_id,
+        )
+        project = _find_project_by_id(
+            projects=projects,
+            project_id=resolution.project_id,
+        )
+
+        if project is None:
+            resolution_error = (
+                "Resolved project could not be found."
+            )
+        else:
+            activity = activity_extractor.extract(
+                user_input=request.message,
+                project=project,
+            )
+
+            if (
+                activity.current_focus is not None
+                or activity.latest_activity is not None
+            ):
+                activity_project = projects_client.update_activity(
+                    project_id=resolution.project_id,
+                    current_focus=activity.current_focus,
+                    latest_activity=activity.latest_activity,
+                )
 
     decision = decision_engine.evaluate(
         user_input=request.message,
-        current_context=context.context,
+        current_context=context_update.context,
         extraction=extraction,
     )
-
-    # ---------------------------------------------------------
-    # 6. Execute the decision
-    # ---------------------------------------------------------
 
     execution = executor.execute(
         user_id=x_user_id,
         decision=decision,
     )
 
-    # ---------------------------------------------------------
-    # 7. Return complete result
-    # ---------------------------------------------------------
+    if resolution.matched and execution.get("executed"):
+        response_type = "multi_intent"
+    elif resolution.matched:
+        response_type = "existing_project"
+    elif execution.get("executed"):
+        response_type = "new_intent"
+    else:
+        response_type = "context_only"
 
     return {
-        "type": "new_intent",
+        "type": response_type,
         "extraction": extraction,
         "context_update": context_update.context,
+        "resolution": resolution,
+        "resolution_error": resolution_error,
+        "activity": activity,
+        "activity_project": activity_project,
         "decision": decision,
         "execution": execution,
     }

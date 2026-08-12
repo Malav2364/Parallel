@@ -73,13 +73,26 @@ Rules:
    message does not provide enough evidence to distinguish
    them, return matched=false.
 
-7. If there is no meaningful relationship, return matched=false.
+7. If a message contains multiple intents, separate project
+   activity from broader context updates. Match the project that
+   the concrete work or progress belongs to.
 
-8. Never invent a project ID.
+8. Do not treat a separate future focus, study plan, goal, or
+   life-area mention as a competing project match unless the
+   message describes concrete activity within that project too.
 
-9. Confidence must be between 0 and 1.
+9. For example, "I completed the checkout page of my AI product
+   and now I will study for MBA" should match the AI product
+   project for the checkout activity. The MBA portion is a
+   separate context or goal update.
 
-10. Prefer an existing project when the semantic relationship
+10. If there is no meaningful relationship, return matched=false.
+
+11. Never invent a project ID.
+
+12. Confidence must be between 0 and 1.
+
+13. Prefer an existing project when the semantic relationship
     is strong, even if the project name is not explicitly
     mentioned.
 """

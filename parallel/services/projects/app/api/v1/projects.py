@@ -71,6 +71,8 @@ def update_project_activity(
         project_id=project_id,
         current_focus=request.current_focus,
         latest_activity=request.latest_activity,
+        update_current_focus="current_focus" in request.model_fields_set,
+        update_latest_activity="latest_activity" in request.model_fields_set,
     )
 
     if project is None:
