@@ -64,9 +64,7 @@ Return JSON matching the requested schema.
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
-                "response_json_schema": (
-                    ProjectActivity.model_json_schema()
-                ),
+                "response_json_schema": (ProjectActivity.model_json_schema()),
             },
         )
 

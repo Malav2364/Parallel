@@ -44,6 +44,7 @@ class ContextService:
         context.version += 1
 
         updated_context = self.repository.update(context)
+
         self.repository.create_change(
             ContextChangeEntity(
                 id=str(uuid4()),
@@ -75,6 +76,88 @@ class ContextService:
 
         return changes
 
+    # -----------------------------------------
+    # Goal normalization
+    # -----------------------------------------
+
+    @staticmethod
+    def normalize_goal(goal) -> dict | None:
+        """
+        Convert both legacy string goals and structured
+        goal objects into one consistent structure.
+        """
+
+        # Legacy format:
+        # "apply for MBA"
+        if isinstance(goal, str):
+            goal = goal.strip()
+
+            if not goal:
+                return None
+
+            return {
+                "name": goal,
+                "status": "active",
+                "target_date": None,
+            }
+
+        # New structured format:
+        # {
+        #     "name": "Pursue an MBA",
+        #     "status": "active",
+        #     "target_date": "2027",
+        # }
+        if isinstance(goal, dict):
+            name = goal.get("name")
+
+            if not isinstance(name, str):
+                return None
+
+            name = name.strip()
+
+            if not name:
+                return None
+
+            return {
+                "name": name,
+                "status": goal.get(
+                    "status",
+                    "active",
+                ),
+                "target_date": goal.get("target_date"),
+            }
+
+        return None
+
+    @classmethod
+    def normalize_goals(
+        cls,
+        goals: list,
+    ) -> list[dict]:
+        """
+        Normalize all existing goals and remove
+        exact duplicates.
+        """
+
+        normalized = []
+        seen = set()
+
+        for goal in goals:
+            normalized_goal = cls.normalize_goal(goal)
+
+            if normalized_goal is None:
+                continue
+
+            key = normalized_goal["name"].strip().lower()
+
+            if key in seen:
+                continue
+
+            seen.add(key)
+            normalized.append(normalized_goal)
+
+        return normalized
+
     def apply_updates(
         self,
         user_id: str,
@@ -83,6 +166,7 @@ class ContextService:
         context = self.get_context(user_id)
 
         current_context = dict(context.context or {})
+
         updates_dict = dict(updates)
 
         # -----------------------------------------
@@ -97,34 +181,31 @@ class ContextService:
                 current_context[key] = value
 
         # -----------------------------------------
-        # Goals are additive
+        # Goals
         # -----------------------------------------
 
-        goals_to_add = updates_dict.get("goals_to_add", [])
+        existing_goals = self.normalize_goals(current_context.get("goals", []))
 
-        if goals_to_add:
-            goals = list(current_context.get("goals", []))
+        existing_names = {goal["name"].strip().lower() for goal in existing_goals}
 
-            existing_goals = {
-                goal.strip().lower()
-                for goal in goals
-                if isinstance(goal, str)
-            }
+        goals_to_add = updates_dict.get(
+            "goals_to_add",
+            [],
+        )
 
-            for goal in goals_to_add:
-                if not isinstance(goal, str):
-                    continue
+        for goal in goals_to_add:
+            normalized_goal = self.normalize_goal(goal)
 
-                goal = goal.strip()
+            if normalized_goal is None:
+                continue
 
-                if not goal:
-                    continue
+            key = normalized_goal["name"].strip().lower()
 
-                if goal.lower() not in existing_goals:
-                    goals.append(goal)
-                    existing_goals.add(goal.lower())
+            if key not in existing_names:
+                existing_goals.append(normalized_goal)
+                existing_names.add(key)
 
-            current_context["goals"] = goals
+        current_context["goals"] = existing_goals
 
         return self.update_context(
             user_id=user_id,
@@ -133,5 +214,8 @@ class ContextService:
             ),
         )
 
-    def list_changes(self, user_id: str) -> list[ContextChangeEntity]:
+    def list_changes(
+        self,
+        user_id: str,
+    ) -> list[ContextChangeEntity]:
         return self.repository.list_changes(user_id)
