@@ -61,7 +61,7 @@ Valid actions:
 
 - "none"
 - "create_project"
-- "create_space"
+- "suggest_space"
 - "create_goal"
 - "create_habit"
 
@@ -90,56 +90,438 @@ Therefore the Decision Engine must return:
   have already been updated. No additional action is required."
 }}
 
+
+IMPORTANT DISTINCTION:
+
+The current context may contain goals describing projects that the user
+intends to build.
+
+A goal entry does NOT prove that a corresponding Project object exists.
+
+Project existence is determined separately by the Project Resolver.
+
+Therefore:
+
+- goal in context != existing project
+- project activity != goal
+- existing project != merely having a matching goal
+
+When deciding whether to create a project, use the user's message and the
+available project-resolution information rather than assuming that a matching
+goal means the project already exists.
+
 Rules:
-1. Ignore temporary everyday events that do not affect long-term
-   personalization.
-2. Return every meaningful, independently identifiable signal in the signals
-   array. One message may contain a life_change and a project signal.
-3. Use signal type interest for a simple interest that does not justify a
-   goal, project, habit, or Space.
-4. Use signal type context_update for durable information that should update
-   the user's current context.
-5. Use signal type goal for an explicit goal.
-6. Use signal type habit for an explicit habit or behavior-change intention.
-7. Use signal type project for an active initiative requiring sustained work.
-8. Use signal type life_change for a significant life transition.
-9. Each signal must include a concise description and significance between 0
-   and 1. Include name only when the signal has a meaningful name.
-10. Choose exactly one action for the next executable step.
-11. Use action create_project only when the user is explicitly trying to
-    accomplish or build an ongoing project.
-12. Use action update_context for durable context or meaningful interests
-    that should be observed but do not justify creating an object.
-13. Use action none for temporary events with no durable implication.
-14. Do not create a project for a vague interest, casual idea, or topic
-    mention.
-15. Do not create a Space merely because a topic was mentioned once.
-16. When action is create_project, provide concise project_name and
-    project_description based only on the user's message.
-17. When a project represents a significant long-term initiative, ongoing
-    professional activity, business, career transition, or major life area,
-    it should normally have a dedicated Space.
-18. When action is create_project and the project is a significant ongoing
-    initiative, provide space_candidate using the project name.
-19. Do not leave space_candidate empty for a significant project unless there
-    is a clear reason why a dedicated Space would be inappropriate.
-20. A Space represents a persistent area of the user's life or work, while a
-    Project represents a specific initiative within that area.
-21. Do not create a Space merely because a topic was mentioned once. For a
-    casual interest, leave space_candidate empty.
-22. Do not invent information that is not supported by the user's message.
-23. Do not return a decision field. The signals array replaces the old single
-    decision field.
+
+1. Ignore temporary, everyday events that have no meaningful impact on the
+   user's long-term context, goals, habits, projects, or priorities.
+
+2. Return every meaningful, independently identifiable signal in the
+   `signals` array. A single message may contain multiple signals.
+
+3. A message may contain multiple different signal types. For example, a
+   message may contain both a project signal and a goal signal.
+
+4. Use signal type `interest` for a simple interest, curiosity, or preference
+   that does not represent a concrete goal, recurring behavior, project, or
+   significant life change.
+
+5. Use signal type `context_update` for durable current-state information
+   that should be represented in the user's personal context.
+
+6. Use signal type `goal` when the user expresses an intended outcome,
+   achievement, or meaningful objective that they want to accomplish over
+   time.
+
+7. Use signal type `habit` ONLY when the user explicitly describes a
+   recurring, repeated, routine, or scheduled behavior.
+
+   Examples of habits:
+   - "I study MBA material every evening."
+   - "I go to the gym five days a week."
+   - "I practice coding for one hour every morning."
+   - "I read for 30 minutes before going to sleep."
+
+   Do NOT classify a one-time intention, commitment, aspiration, or goal as
+   a habit.
+
+   Examples that are NOT habits:
+   - "I will start preparing for my MBA exams."
+   - "I want to study seriously for my MBA exams."
+   - "I should start exercising."
+   - "I want to learn photography."
+   - "I want to pursue an MBA next year."
+
+   Classify these according to their actual meaning, usually as a goal or
+   context update.
+
+8. A goal represents an intended outcome or achievement.
+
+   Use signal type `goal` when the user expresses an intention to accomplish
+   something over time, even when they do not provide a detailed plan.
+
+   Examples:
+   - "I want to pursue an MBA next year."
+   - "I want to build a photography portfolio."
+   - "I want to become better at system design."
+   - "I want to launch my own business."
+
+   A goal is NOT automatically a habit just because achieving it requires
+   repeated work.
+
+9. Use signal type `project` for a concrete, ongoing initiative that requires
+   sustained execution, development, organization, or management.
+
+   Examples:
+   - "I'm building an AI startup."
+   - "I'm creating a photography portfolio for freelance work."
+   - "I'm launching a YouTube channel."
+   - "I'm developing a mobile application."
+
+10. Distinguish goals from projects carefully.
+
+    A goal describes the outcome the user wants to achieve.
+
+    A project describes the concrete initiative through which the user is
+    actively working toward an outcome.
+
+    Examples:
+
+    - "I want to become a photographer." → goal
+    - "I want to build a photography portfolio." → project
+    - "I want to start a YouTube channel about photography." → project
+    - "I want to get better at photography." → goal
+    - "I'm building my photography portfolio." → existing project activity
+
+11. Use action create_project when the user's message explicitly describes
+    starting, building, creating, launching, developing, or working toward
+    a concrete ongoing initiative.
+
+    A project may ALSO appear as a goal in the user's context.
+
+    The presence of a matching goal does NOT mean that the project already
+    exists.
+
+    The Decision Engine must distinguish between:
+    - a goal representing an intended outcome, and
+    - a project representing a concrete ongoing initiative.
+
+    Examples:
+
+    "I want to build a personal finance tracker for college students."
+    -> project + goal
+    -> action create_project
+
+    "I'm starting an AI startup."
+    -> project + goal
+    -> action create_project
+
+    "I want to build a photography portfolio."
+    -> project + goal
+    -> action create_project
+
+    "I want to become better at system design."
+    -> goal
+    -> action create_goal
+
+    "I am interested in photography."
+    -> interest
+    -> action none
+
+12. Use action create_goal only when the user introduces a genuinely new
+    goal that does not represent a concrete project.
+
+    If a new goal clearly describes a concrete project or ongoing initiative,
+    prefer create_project instead of create_goal.
+
+13. The Context Service may have already processed the user's message and
+    stored a goal, interest, or context update before the Decision Engine
+    runs.
+
+    Do NOT use this fact alone as a reason to return action none.
+
+    Context processing and project existence are separate concerns.
+
+14. Return action none for a project-related message ONLY when the referenced
+    project already exists and the message merely reports progress,
+    status, or activity on that existing project.
+
+15. If the project resolver reports no matching existing project and the
+    user's message clearly describes a new concrete project, prefer
+    create_project.
+
+16. A goal and a project can legitimately be created from the same user
+    message.
+
+    For example:
+
+    "I want to build a personal finance tracker for college students."
+
+    may produce:
+
+    signal:
+      type = goal
+
+    signal:
+      type = project
+
+    action:
+      create_project
+
+    The project creation action is not suppressed merely because the goal
+    has already been processed by the Context Service.
+
+17. Use action none when:
+    - an existing project's activity has already been processed,
+    - an existing goal is merely being reinforced,
+    - an existing interest is merely being reinforced,
+    - or the message contains only context updates with no additional
+      executable action.
+
+18. Use action `create_habit` ONLY when the user introduces a genuinely new
+    recurring behavior that is not already represented as an existing habit.
+
+    An existing goal does NOT mean that a habit supporting that goal already
+    exists.
+
+    Example:
+
+    Existing context:
+    goal = "Pursue an MBA"
+
+    User:
+    "I study for my MBA exams every evening from 7 to 9."
+
+    Result:
+    - signal type = `habit`
+    - action = `create_habit`
+
+19. Do not classify a one-time intention as a habit.
+
+    Examples:
+
+    - "I want to start preparing seriously for my MBA exams."
+      → goal
+
+    - "I will study for my MBA exams tomorrow."
+      → temporary event / context
+
+    - "I study for my MBA exams every evening."
+      → habit
+
+20. Use action `create_project` ONLY when the user explicitly introduces a
+    new, concrete, ongoing initiative that is not already represented by an
+    existing project.
+
+21. If the user's message refers to an existing project, do NOT create a new
+    project merely because the user describes a new task, milestone,
+    feature, bug, or activity within that project.
+
+    Existing project activity is already processed separately.
+
+22. Examples of existing project activity that should normally result in
+    action `none`:
+
+    - "I completed the login page."
+    - "I fixed the checkout bug."
+    - "I'm testing Stripe payments."
+    - "I finished the landing page."
+    - "I deployed the backend."
+
+23. Do not create a project for:
+    - a vague interest,
+    - a casual idea,
+    - a topic mention,
+    - a temporary task,
+    - or an activity that belongs to an existing project.
+
+24. Use action create_goal only when the user introduces a genuinely new
+    goal that is not already represented in the current context AND the
+    goal does not itself describe a concrete ongoing project.
+
+    If the new goal describes a concrete project or initiative, use
+    create_project instead.
+
+25. When action is `create_project` and the project represents a significant
+    ongoing initiative, business, professional activity, career initiative,
+    or major life area, provide `space_candidate` using a concise name
+    appropriate for the persistent area.
+
+26. A Space represents a persistent area of the user's life or work.
+
+    A Project represents a specific initiative within that area.
+
+    Do not create or suggest a Space merely because a topic was mentioned
+    once.
+
+27. A significant new project will normally justify a dedicated Space.
+
+    Examples:
+
+    - AI startup → project + Space
+    - MBA application preparation → project + Space
+    - Photography portfolio → project + Space
+    - YouTube photography channel → project + Space
+
+28. A simple interest does not justify a Space.
+
+    Example:
+
+    - "I might learn photography someday."
+      → interest, no project, no Space
+
+29. Use action `suggest_space` only when a persistent area is clearly
+    appropriate but creating a project is not the correct next action.
+
+30. Do not use `suggest_space` merely because the user mentions a topic,
+    interest, goal, or temporary activity.
+
+31. Do not create duplicate entities merely because a related entity of a
+    DIFFERENT TYPE already exists.
+
+    Goals, habits, projects, interests, and Spaces are separate entity types.
+
+    The existence of a goal does NOT mean that a corresponding project
+    already exists.
+
+    The existence of an interest does NOT mean that a corresponding goal
+    or project already exists.
+
+    The existence of a project does NOT mean that a corresponding goal
+    already exists.
+
+32. When deciding whether to create a project, compare the proposed project
+    ONLY against existing projects.
+
+    Do not use goals, interests, habits, or other context fields as evidence
+    that the project already exists.
+
+33. When deciding whether to create a goal, compare the proposed goal ONLY
+    against existing goals.
+
+34. When deciding whether to create a habit, compare the proposed habit ONLY
+    against existing habits.
+
+35. A goal and a project may represent the same broader objective while still
+    being separate entities.
+
+    Example:
+
+    Existing goal:
+    "Build a mobile app for exam preparation"
+
+    User:
+    "I'm building a mobile app to help students prepare for exams."
+
+    If no equivalent project exists, the correct action is:
+    "create_project"
+
+36. Use action create_project when the user introduces a concrete ongoing
+    initiative and there is no equivalent EXISTING PROJECT.
+
+    Never prevent create_project solely because a related goal already exists.
+
+    Example:
+
+    User:
+    "I finished the checkout page and now I study for MBA every evening."
+
+    Existing project:
+    Smart Homee
+
+    Result:
+    - project signal → existing project activity
+    - habit signal → new recurring MBA study behavior
+
+    The Decision Engine should return `create_habit` if that habit is not
+    already represented.
+
+37. When a message contains an existing project activity and an already-known
+    goal or context update, return action `none`.
+
+    Example:
+
+    "I completed the Stripe integration and I'm focusing on MBA preparation."
+
+    If both are already represented:
+
+    → action = `none`
+
+38. If a new project is introduced together with a new goal, choose the
+    single most appropriate executable action.
+
+    Prefer `create_project` when the project itself is the concrete ongoing
+    initiative that operationalizes the goal.
+
+39. If a new recurring behavior is introduced for an existing goal, prefer
+    `create_habit` rather than `create_goal`.
+
+40. If a user merely expresses interest without a concrete intended outcome,
+    do not create a goal, project, habit, or Space.
+
+41. If the user explicitly describes a recurring behavior, do not downgrade
+    it to a generic goal simply because it supports an existing goal.
+
+42. The `signals` array describes the meaning of the user's message.
+    The `action` describes only the next additional operation PIOS should
+    perform.
+
+43. Do not return a `decision` field. The `signals` array replaces the old
+    single decision field.
+
+44. Return exactly one action and one reason.
+
+45. If no additional action is required, return:
+
+    `"action": "none"`
+
+    and explain that the relevant context and/or project activity has
+    already been processed.
 
 Examples:
-- "I'm starting an AI startup" means project plus Space.
-- "I'm building the landing page for my startup" refers to an existing
-  project and existing Space.
-- "I might learn photography someday" means interest with no Space.
-- "I want to seriously learn photography and practice every weekend" means a
-  goal or habit and may justify a Photography Space.
 
-Return the signals, one action, and reason.
+- "I'm starting an AI startup."
+  → project signal
+  → create_project
+
+- "I'm building the landing page for my startup."
+  → existing project activity
+  → none
+
+- "I might learn photography someday."
+  → interest
+  → none
+
+- "I want to become better at photography."
+  → goal
+  → create_goal if genuinely new
+
+- "I want to build a photography portfolio."
+  → project
+  → create_project if genuinely new
+
+- "I want to start a YouTube channel about photography."
+  → project
+  → create_project if genuinely new
+
+- "I want to start preparing seriously for my MBA exams."
+  → goal
+  → create_goal if genuinely new, otherwise none
+
+- "I study for my MBA exams every evening from 7 to 9."
+  → habit
+  → create_habit if genuinely new, otherwise none
+
+- "I completed the Stripe checkout integration and now I'm preparing for
+  my MBA exams."
+  → existing project activity + context/goal update
+  → none
+
+- "I completed the Stripe checkout integration and I now study for my MBA
+  exams every evening."
+  → existing project activity + new habit
+  → create_habit if the habit is not already represented
+
+Return the signals, exactly one action, and reason.
 """
 
         response = self.client.models.generate_content(

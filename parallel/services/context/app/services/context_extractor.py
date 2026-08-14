@@ -89,9 +89,7 @@ Rules:
         )
 
         # return ContextExtraction.model_validate_json(response.text or "{}")
-        result = ContextExtraction.model_validate_json(
-            response.text or "{}"
-        )
+        result = ContextExtraction.model_validate_json(response.text or "{}")
 
         updates = result.updates
 
@@ -100,9 +98,7 @@ Rules:
             extracted_goals = updates.pop("goals")
 
             existing_normalized = {
-                goal.strip().lower()
-                for goal in existing_goals
-                if isinstance(goal, str)
+                goal.strip().lower() for goal in existing_goals if isinstance(goal, str)
             }
 
             new_goals = [
