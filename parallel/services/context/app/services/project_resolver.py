@@ -102,9 +102,7 @@ Rules:
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
-                "response_json_schema": (
-                    ProjectResolution.model_json_schema()
-                ),
+                "response_json_schema": (ProjectResolution.model_json_schema()),
             },
         )
 
@@ -115,10 +113,7 @@ Rules:
         # Safety check. Gemini should never be allowed to
         # manufacture an arbitrary project ID.
         if result.matched:
-            valid_ids = {
-                project["id"]
-                for project in projects
-            }
+            valid_ids = {project["id"] for project in projects}
 
             if result.project_id not in valid_ids:
                 return ProjectResolution(

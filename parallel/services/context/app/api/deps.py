@@ -44,8 +44,10 @@ def get_projects_client() -> ProjectsClient:
 def get_workspace_client() -> WorkspaceClient:
     return WorkspaceClient()
 
+
 def get_project_activity_extractor() -> ProjectActivityExtractor:
     return ProjectActivityExtractor()
+
 
 def get_project_resolver(
     projects_client: ProjectsClient = Depends(get_projects_client),
@@ -58,5 +60,3 @@ def get_action_executor(
     workspace_client: WorkspaceClient = Depends(get_workspace_client),
 ) -> ActionExecutor:
     return ActionExecutor(projects_client, workspace_client)
-
-

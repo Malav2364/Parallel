@@ -49,11 +49,7 @@ def _find_project_by_id(
         return None
 
     return next(
-        (
-            project
-            for project in projects
-            if project["id"] == project_id
-        ),
+        (project for project in projects if project["id"] == project_id),
         None,
     )
 
@@ -187,9 +183,7 @@ def process_context(
         )
 
         if project is None:
-            resolution_error = (
-                "Resolved project could not be found."
-            )
+            resolution_error = "Resolved project could not be found."
         else:
             activity = activity_extractor.extract(
                 user_input=request.message,
@@ -238,56 +232,51 @@ def process_context(
         "execution": execution,
     }
 
+
 @router.post(
     "/project-activity",
 )
 def extract_project_activity(
-        request: ContextAnalyzeRequest,
-        x_user_id: str = Header(...),
-        resolver: ProjectResolver = Depends(
-            get_project_resolver,
-        ),
-        extractor: ProjectActivityExtractor = Depends(
-            get_project_activity_extractor
-        ),
-    ):
-        resolution = resolver.resolve(
-            user_id=x_user_id,
-            user_input=request.message,
-        )
+    request: ContextAnalyzeRequest,
+    x_user_id: str = Header(...),
+    resolver: ProjectResolver = Depends(
+        get_project_resolver,
+    ),
+    extractor: ProjectActivityExtractor = Depends(get_project_activity_extractor),
+):
+    resolution = resolver.resolve(
+        user_id=x_user_id,
+        user_input=request.message,
+    )
 
-        if not resolution.matched:
-            return {
-                "matched": False,
-                "activity": None,
-            }
-
-        projects = resolver.projects_client.list_projects(
-            x_user_id,
-        )
-
-        project = next(
-            (
-                project
-                for project in projects
-                if project["id"] == resolution.project_id
-            ),
-            None,
-        )
-
-        if project is None:
-            return {
-                "matched": False,
-                "activity": None,
-            }
-
-        activity = extractor.extract(
-            user_input=request.message,
-            project=project,
-        )
-
+    if not resolution.matched:
         return {
-            "matched": True,
-            "project_id": resolution.project_id,
-            "activity": activity,
+            "matched": False,
+            "activity": None,
         }
+
+    projects = resolver.projects_client.list_projects(
+        x_user_id,
+    )
+
+    project = next(
+        (project for project in projects if project["id"] == resolution.project_id),
+        None,
+    )
+
+    if project is None:
+        return {
+            "matched": False,
+            "activity": None,
+        }
+
+    activity = extractor.extract(
+        user_input=request.message,
+        project=project,
+    )
+
+    return {
+        "matched": True,
+        "project_id": resolution.project_id,
+        "activity": activity,
+    }
