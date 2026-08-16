@@ -233,6 +233,9 @@ Rules:
     If a new goal clearly describes a concrete project or ongoing initiative,
     prefer create_project instead of create_goal.
 
+    When action is create_goal, set goal_name to the concise goal name and
+    optionally set goal_description, goal_status, and goal_target_date.
+
 13. The Context Service may have already processed the user's message and
     stored a goal, interest, or context update before the Decision Engine
     runs.

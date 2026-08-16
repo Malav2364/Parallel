@@ -34,6 +34,25 @@ class ProjectsClient:
         response.raise_for_status()
         return response.json()
 
+    def get_by_name(
+        self,
+        user_id: str,
+        name: str,
+    ) -> dict | None:
+        normalized_name = name.strip().lower()
+
+        projects = self.list_projects(user_id)
+
+        return next(
+            (
+                project
+                for project in projects
+                if project.get("name", "").strip().lower()
+                == normalized_name
+            ),
+            None,
+        )
+
     def update_activity(
         self,
         project_id: str,

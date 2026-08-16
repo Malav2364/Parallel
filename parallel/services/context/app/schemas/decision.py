@@ -28,6 +28,10 @@ class ContextDecision(BaseModel):
     project_name: str | None = None
     project_description: str | None = None
     space_candidate: str | None = None
+    goal_name: str | None = None
+    goal_description: str | None = None
+    goal_status: str | None = "active"
+    goal_target_date: str | None = None
 
 
 class ContextSignal(BaseModel):

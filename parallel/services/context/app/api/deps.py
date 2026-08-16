@@ -1,6 +1,7 @@
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+from app.clients.goals_client import GoalsClient
 from app.clients.projects_client import ProjectsClient
 from app.clients.workspace_client import WorkspaceClient
 from app.db.database import get_db
@@ -41,6 +42,10 @@ def get_projects_client() -> ProjectsClient:
     return ProjectsClient()
 
 
+def get_goals_client() -> GoalsClient:
+    return GoalsClient()
+
+
 def get_workspace_client() -> WorkspaceClient:
     return WorkspaceClient()
 
@@ -58,5 +63,6 @@ def get_project_resolver(
 def get_action_executor(
     projects_client: ProjectsClient = Depends(get_projects_client),
     workspace_client: WorkspaceClient = Depends(get_workspace_client),
+    goals_client: GoalsClient = Depends(get_goals_client),
 ) -> ActionExecutor:
-    return ActionExecutor(projects_client, workspace_client)
+    return ActionExecutor(projects_client, workspace_client, goals_client)
