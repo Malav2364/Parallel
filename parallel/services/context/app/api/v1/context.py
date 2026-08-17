@@ -204,8 +204,9 @@ def process_context(
 
     decision = decision_engine.evaluate(
         user_input=request.message,
-        current_context=original_context,
+        current_context=context.context,
         extraction=extraction,
+        project_resolution=resolution,
     )
 
     execution = executor.execute(

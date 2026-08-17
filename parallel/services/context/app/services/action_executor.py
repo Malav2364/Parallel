@@ -2,6 +2,7 @@ from app.clients.goals_client import GoalsClient
 from app.clients.projects_client import ProjectsClient
 from app.clients.workspace_client import WorkspaceClient
 from app.schemas.decision import ContextDecision
+from app.clients.habits_client import HabitsClient
 
 
 class ActionExecutor:
@@ -10,10 +11,12 @@ class ActionExecutor:
         projects_client: ProjectsClient,
         workspace_client: WorkspaceClient,
         goals_client: GoalsClient | None = None,
+        habits_client: HabitsClient | None = None,
     ) -> None:
         self.projects_client = projects_client
         self.workspace_client = workspace_client
         self.goals_client = goals_client
+        self.habits_client = habits_client
 
     def execute(
         self,
@@ -34,6 +37,12 @@ class ActionExecutor:
 
         if decision.action == "create_goal":
             return self._create_goal(
+                user_id=user_id,
+                decision=decision,
+            )
+        
+        if decision.action == "create_habit":
+            return self._create_habit(
                 user_id=user_id,
                 decision=decision,
             )
@@ -93,6 +102,62 @@ class ActionExecutor:
             "action": "create_goal",
             "goal": goal,
             "goal_created": goal_created,
+        }
+
+    def _create_habit(
+        self,
+        user_id: str,
+        decision: ContextDecision,
+    ) -> dict:
+        if self.habits_client is None:
+            return {
+                "executed": False,
+                "action": "create_habit",
+                "reason": "Habits client is not configured.",
+            }
+
+        if not decision.habit_name:
+            return {
+                "executed": False,
+                "action": "create_habit",
+                "reason": "Habit activity was not provided.",
+            }
+
+        if not decision.habit_schedule:
+            return {
+                "executed": False,
+                "action": "create_habit",
+                "reason": "Habit schedule was not provided.",
+            }
+
+        existing = self.habits_client.get_by_name(
+            user_id=user_id,
+            name=decision.habit_name,
+        )
+
+        if existing is not None:
+            return {
+                "executed": False,
+                "action": "create_habit",
+                "reason": "Habit already exists.",
+                "habit": existing,
+                "habit_created": False,
+            }
+
+        habit = self.habits_client.create_habit(
+            user_id=user_id,
+            name=decision.habit_name,
+            schedule=decision.habit_schedule,
+            description=decision.habit_description,
+            time_window=decision.habit_time_window,
+            status=decision.habit_status or "active",
+        )
+
+        return {
+            "executed": True,
+            "action": "create_habit",
+            "habit": habit,
+            "habit_created": True,
         }
 
     def _create_project(

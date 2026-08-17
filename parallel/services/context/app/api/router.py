@@ -6,6 +6,6 @@ router = APIRouter()
 
 router.include_router(
     context_router,
-    prefix="/api/v1/context",
+prefix="/api/v1/context",
     tags=["Context"],
 )
