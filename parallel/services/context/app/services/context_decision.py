@@ -24,19 +24,45 @@ System.
 Determine whether the user's message represents something PIOS should react
 to.
 
-Current context:
+IMPORTANT STATE MODEL:
+
+`current_context` represents the user's persistent state BEFORE the
+current user message was processed.
+
+`extraction.updates` represents NEW information detected FROM the current
+user message.
+
+The extracted updates are NOT evidence that those entities already existed.
+
+When determining whether something is genuinely new:
+
+- Existing goals MUST be determined only from `current_context["goals"]`.
+- Existing projects MUST be determined only from the Project Resolver.
+- Existing habits MUST be determined only from `current_context["habits"]`.
+- Existing interests MUST be determined only from `current_context["interests"]`.
+
+NEVER treat `extraction.updates` as existing context.
+
+Current context BEFORE this message:
 {current_context}
 
 User message:
 {user_input}
 
-Extracted current-state updates:
+NEW information extracted FROM this message:
 {extraction.updates}
 
 IMPORTANT ARCHITECTURE RULE:
 
-Personal context updates are already processed before the
-Decision Engine runs.
+The Context Service may persist the extracted updates before the Decision
+Engine executes.
+
+However, `current_context` supplied to this Decision Engine represents the
+state BEFORE the current message's updates.
+
+Therefore, use `current_context` to determine what already existed before
+this message, and use `extraction` to determine what was newly introduced
+by this message.
 
 Existing project activity updates are also already processed
 before the Decision Engine runs.
@@ -227,28 +253,12 @@ Rules:
     -> interest
     -> action none
 
-12. Use action create_goal only when the user introduces a genuinely new
-    goal that does not represent a concrete project.
 
-    If a new goal clearly describes a concrete project or ongoing initiative,
-    prefer create_project instead of create_goal.
-
-    When action is create_goal, set goal_name to the concise goal name and
-    optionally set goal_description, goal_status, and goal_target_date.
-
-13. The Context Service may have already processed the user's message and
-    stored a goal, interest, or context update before the Decision Engine
-    runs.
-
-    Do NOT use this fact alone as a reason to return action none.
-
-    Context processing and project existence are separate concerns.
-
-14. Return action none for a project-related message ONLY when the referenced
+12. Return action none for a project-related message ONLY when the referenced
     project already exists and the message merely reports progress,
     status, or activity on that existing project.
 
-15. If the project resolver reports no matching existing project and the
+13. If the project resolver reports no matching existing project and the
     user's message clearly describes a new concrete project, prefer
     create_project.
 
@@ -337,26 +347,19 @@ Rules:
     - a temporary task,
     - or an activity that belongs to an existing project.
 
-24. Use action create_goal only when the user introduces a genuinely new
-    goal that is not already represented in the current context AND the
-    goal does not itself describe a concrete ongoing project.
-
-    If the new goal describes a concrete project or initiative, use
-    create_project instead.
-
-25. When action is `create_project` and the project represents a significant
+24. When action is `create_project` and the project represents a significant
     ongoing initiative, business, professional activity, career initiative,
     or major life area, provide `space_candidate` using a concise name
     appropriate for the persistent area.
 
-26. A Space represents a persistent area of the user's life or work.
+25. A Space represents a persistent area of the user's life or work.
 
     A Project represents a specific initiative within that area.
 
     Do not create or suggest a Space merely because a topic was mentioned
     once.
 
-27. A significant new project will normally justify a dedicated Space.
+26. A significant new project will normally justify a dedicated Space.
 
     Examples:
 
@@ -365,20 +368,20 @@ Rules:
     - Photography portfolio → project + Space
     - YouTube photography channel → project + Space
 
-28. A simple interest does not justify a Space.
+27. A simple interest does not justify a Space.
 
     Example:
 
     - "I might learn photography someday."
       → interest, no project, no Space
 
-29. Use action `suggest_space` only when a persistent area is clearly
+28. Use action `suggest_space` only when a persistent area is clearly
     appropriate but creating a project is not the correct next action.
 
-30. Do not use `suggest_space` merely because the user mentions a topic,
+29. Do not use `suggest_space` merely because the user mentions a topic,
     interest, goal, or temporary activity.
 
-31. Do not create duplicate entities merely because a related entity of a
+30. Do not create duplicate entities merely because a related entity of a
     DIFFERENT TYPE already exists.
 
     Goals, habits, projects, interests, and Spaces are separate entity types.
@@ -392,19 +395,17 @@ Rules:
     The existence of a project does NOT mean that a corresponding goal
     already exists.
 
-32. When deciding whether to create a project, compare the proposed project
+31. When deciding whether to create a project, compare the proposed project
     ONLY against existing projects.
 
     Do not use goals, interests, habits, or other context fields as evidence
     that the project already exists.
 
-33. When deciding whether to create a goal, compare the proposed goal ONLY
-    against existing goals.
 
-34. When deciding whether to create a habit, compare the proposed habit ONLY
+32. When deciding whether to create a habit, compare the proposed habit ONLY
     against existing habits.
 
-35. A goal and a project may represent the same broader objective while still
+33. A goal and a project may represent the same broader objective while still
     being separate entities.
 
     Example:
@@ -418,7 +419,7 @@ Rules:
     If no equivalent project exists, the correct action is:
     "create_project"
 
-36. Use action create_project when the user introduces a concrete ongoing
+34. Use action create_project when the user introduces a concrete ongoing
     initiative and there is no equivalent EXISTING PROJECT.
 
     Never prevent create_project solely because a related goal already exists.
@@ -438,7 +439,7 @@ Rules:
     The Decision Engine should return `create_habit` if that habit is not
     already represented.
 
-37. When a message contains an existing project activity and an already-known
+35. When a message contains an existing project activity and an already-known
     goal or context update, return action `none`.
 
     Example:
@@ -449,36 +450,84 @@ Rules:
 
     → action = `none`
 
-38. If a new project is introduced together with a new goal, choose the
+36. If a new project is introduced together with a new goal, choose the
     single most appropriate executable action.
 
     Prefer `create_project` when the project itself is the concrete ongoing
     initiative that operationalizes the goal.
 
-39. If a new recurring behavior is introduced for an existing goal, prefer
+37. If a new recurring behavior is introduced for an existing goal, prefer
     `create_habit` rather than `create_goal`.
 
-40. If a user merely expresses interest without a concrete intended outcome,
+38. If a user merely expresses interest without a concrete intended outcome,
     do not create a goal, project, habit, or Space.
 
-41. If the user explicitly describes a recurring behavior, do not downgrade
+39. If the user explicitly describes a recurring behavior, do not downgrade
     it to a generic goal simply because it supports an existing goal.
 
-42. The `signals` array describes the meaning of the user's message.
+40. The `signals` array describes the meaning of the user's message.
     The `action` describes only the next additional operation PIOS should
     perform.
 
-43. Do not return a `decision` field. The `signals` array replaces the old
+41. Do not return a `decision` field. The `signals` array replaces the old
     single decision field.
 
-44. Return exactly one action and one reason.
+42. Return exactly one action and one reason.
 
-45. If no additional action is required, return:
+43. If no additional action is required, return:
 
     `"action": "none"`
 
     and explain that the relevant context and/or project activity has
     already been processed.
+
+    IMPORTANT GOAL PROCESSING RULE:
+
+The Context Service may process and persist newly extracted goals before
+the Decision Engine runs.
+
+Therefore, the presence of a goal in the UPDATED context must NOT be
+used as evidence that the goal existed before the current user message.
+
+When determining whether a goal is genuinely new, compare the proposed
+goal against the goals in the ORIGINAL context supplied to this evaluation.
+
+The `extraction.updates.goals_to_add` field represents goals detected from
+the CURRENT user message.
+
+If `goals_to_add` contains a goal that was not already present in the
+ORIGINAL context, and the goal does not represent a concrete project,
+the Decision Engine should return:
+
+"action": "create_goal"
+
+with the appropriate `goal_name`, `goal_status`, and other goal fields.
+
+Example:
+
+Original context:
+goals = [
+    "Become excellent at public speaking"
+]
+
+Current message:
+"I want to own a private island."
+
+Extraction:
+goals_to_add = [
+    "Own a private island"
+]
+
+Correct decision:
+
+{{
+    "action": "create_goal",
+    "goal_name": "Own a private island",
+    "goal_status": "active"
+}}
+
+Do NOT return action "none" merely because the updated context now contains
+"Own a private island".
 
 Examples:
 
