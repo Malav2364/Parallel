@@ -1,12 +1,13 @@
 [project]
-name = "pios-goals"
+name = "pios-habits"
 version = "0.1.0"
-description = "Goals Service for PIOS"
+description = "Habits Service for PIOS"
 requires-python = ">=3.13"
 
 dependencies = [
     "alembic>=1.19.0",
     "fastapi>=0.141.1",
+    "httpx>=0.28.1",
     "psycopg[binary]>=3.3.4",
     "pydantic-settings>=2.14.2",
     "ruff>=0.16.3",

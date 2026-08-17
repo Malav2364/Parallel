@@ -3,6 +3,7 @@ from google import genai
 from app.core.config import settings
 from app.schemas import ContextDecision
 from app.services.context_extractor import ContextExtraction
+from app.schemas import ProjectResolution
 
 
 class ContextDecisionEngine:
@@ -16,6 +17,7 @@ class ContextDecisionEngine:
         user_input: str,
         current_context: dict,
         extraction: ContextExtraction,
+        project_resolution: ProjectResolution | None = None,
     ) -> ContextDecision:
         prompt = f"""
 You are the decision component of PIOS, a Personal Intelligence Operating
@@ -48,6 +50,9 @@ Current context BEFORE this message:
 
 User message:
 {user_input}
+
+Project resolution:
+{project_resolution}
 
 NEW information extracted FROM this message:
 {extraction.updates}
@@ -116,6 +121,34 @@ Therefore the Decision Engine must return:
   have already been updated. No additional action is required."
 }}
 
+IMPORTANT PROJECT RESOLUTION RULE:
+
+The Project Resolver is the authoritative source for whether an
+equivalent existing project exists.
+
+If project_resolution.matched is false:
+
+- There is NO existing project matching the user's message.
+- If the user message describes a concrete ongoing initiative,
+  the Decision Engine MUST consider it a new project.
+- A related goal, current_focus, or other context entry MUST NOT
+  suppress project creation.
+
+If project_resolution.matched is true:
+
+- The referenced project already exists.
+- Do NOT create another project for the same initiative.
+- If the message only describes progress, status, tasks, milestones,
+  bugs, or activity on that project, return action "none".
+
+Never infer project existence from:
+- goals
+- current_focus
+- interests
+- habits
+- extraction.updates
+
+Only Project Resolver determines existing project existence.
 
 IMPORTANT DISTINCTION:
 
@@ -135,6 +168,39 @@ Therefore:
 When deciding whether to create a project, use the user's message and the
 available project-resolution information rather than assuming that a matching
 goal means the project already exists.
+
+IMPORTANT:
+
+A user's current_focus may describe a newly introduced project.
+
+Do NOT assume that a current_focus entry means the project already exists.
+
+Example:
+
+Original context:
+goals = [
+    "Become an expert at financial planning"
+]
+
+User:
+"I want to build a personal finance tracker for students."
+
+Extraction:
+current_focus = "personal finance tracker development"
+
+Project resolution:
+matched = false
+
+Correct result:
+
+signals:
+  - type = "project"
+    name = "Personal finance tracker"
+
+action = "create_project"
+
+The related financial-planning goal does NOT mean that the
+personal finance tracker project already exists.
 
 Rules:
 
@@ -528,6 +594,65 @@ Correct decision:
 
 Do NOT return action "none" merely because the updated context now contains
 "Own a private island".
+
+IMPORTANT HABIT OUTPUT RULE:
+
+When action is "create_habit", the decision MUST populate:
+
+- habit_name
+- habit_schedule
+- habit_status
+- optionally habit_description
+- optionally habit_time_window
+
+`habit_name` describes WHAT the recurring behavior is.
+
+`habit_schedule` describes WHEN or HOW OFTEN the behavior occurs.
+
+`habit_time_window` should be populated when the user provides a specific
+time window.
+
+Examples:
+
+User:
+"I study for my MBA every evening from 7 to 9."
+
+Return:
+
+{{
+    "action": "create_habit",
+    "habit_name": "MBA study",
+    "habit_schedule": "daily",
+    "habit_time_window": "19:00-21:00",
+    "habit_status": "active"
+}}
+
+User:
+"I go to the gym five days a week."
+
+Return:
+
+{{
+    "action": "create_habit",
+    "habit_name": "Go to the gym",
+    "habit_schedule": "5 days per week",
+    "habit_status": "active"
+}}
+
+User:
+"I practice coding every morning."
+
+Return:
+
+{{
+    "action": "create_habit",
+    "habit_name": "Coding practice",
+    "habit_schedule": "every morning",
+    "habit_status": "active"
+}}
+
+Do NOT put the schedule only inside the signal description.
+The structured `habit_schedule` field must contain it.
 
 Examples:
 

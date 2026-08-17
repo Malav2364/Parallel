@@ -8,8 +8,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str
 
     WORKSPACE_SERVICE_URL: str
+    HABITS_SERVICE_URL: str
     PROJECTS_SERVICE_URL: str
-    GOALS_SERVICE_URL: str = "http://localhost:8005/api/v1"
+    GOALS_SERVICE_URL: str
 
     GEMINI_API_KEY: str
     CONTEXT_MODEL: str

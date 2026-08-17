@@ -32,6 +32,11 @@ $services = @(
         Name = "Goals"
         Path = Join-Path $root "services\goals"
         Port = 8005
+    },
+    @{
+        Name = "Habits"
+        Path = Join-Path $root "services\habits"
+        Port = 8006
     }
 )
 
@@ -64,3 +69,4 @@ Write-Host "Projects : http://localhost:8002"
 Write-Host "Spaces   : http://localhost:8003"
 Write-Host "Context  : http://localhost:8004"
 Write-Host "Goals  : http://localhost:8005"
+Write-Host "Habits  : http://localhost:8006"
