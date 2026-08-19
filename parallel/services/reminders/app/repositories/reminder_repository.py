@@ -208,13 +208,19 @@ class ReminderRepository:
         owner_id: str,
         title: str,
         scheduled_for: datetime,
-        recurrence: str | None,
     ) -> Reminder | None:
-        statement = select(Reminder).where(
-            Reminder.owner_id == owner_id,
-            Reminder.title == title,
-            Reminder.scheduled_for == scheduled_for,
-            Reminder.recurrence == recurrence,
+        statement = (
+            select(Reminder)
+            .where(
+                Reminder.owner_id == owner_id,
+                Reminder.title == title,
+                Reminder.scheduled_for == scheduled_for,
+                Reminder.status.in_(
+                    ["pending", "processing"]
+                ),
+            )
+            .order_by(Reminder.created_at.asc())
+            .limit(1)
         )
 
         return self.db.scalar(statement)

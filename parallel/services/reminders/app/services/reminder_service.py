@@ -27,7 +27,7 @@ class ReminderService:
             owner_id=owner_id,
             title=title,
             scheduled_for=request.scheduled_for,
-            recurrence=request.recurrence,
+            # recurrence=request.recurrence,
         )
 
         if existing is not None:

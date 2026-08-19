@@ -4,6 +4,9 @@ from app.clients.workspace_client import WorkspaceClient
 from app.schemas.decision import ContextDecision
 from app.clients.habits_client import HabitsClient
 from app.clients.reminders_client import RemindersClient
+from app.services.reminder_datetime import ReminderDateTimeResolver
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 class ActionExecutor:
@@ -174,6 +177,7 @@ class ActionExecutor:
         user_id: str,
         decision: ContextDecision,
     ) -> dict:
+
         if self.reminders_client is None:
             return {
                 "executed": False,
@@ -188,18 +192,66 @@ class ActionExecutor:
                 "reason": "Reminder title was not provided.",
             }
 
-        if not decision.reminder_scheduled_for:
+        if not decision.reminder_date:
             return {
                 "executed": False,
                 "action": "create_reminder",
-                "reason": "Reminder scheduled time was not provided.",
+                "reason": "Reminder date was not provided.",
+            }
+
+        if not decision.reminder_time:
+            return {
+                "executed": False,
+                "action": "create_reminder",
+                "reason": "Reminder time was not provided.",
+            }
+
+        try:
+            scheduled_for = ReminderDateTimeResolver.resolve(
+                date_expression=decision.reminder_date,
+                time_expression=decision.reminder_time,
+            )
+
+        except ValueError as exc:
+            return {
+                "executed": False,
+                "action": "create_reminder",
+                "reason": str(exc),
+            }
+
+        now = datetime.now(
+            ZoneInfo("Asia/Kolkata")
+        )
+
+        if scheduled_for <= now:
+            return {
+                "executed": False,
+                "action": "create_reminder",
+                "reason": (
+                    "Resolved reminder time is in the past."
+                ),
+            }
+
+        existing = self.reminders_client.get_by_details(
+            user_id=user_id,
+            title=decision.reminder_title,
+            scheduled_for=scheduled_for.isoformat(),
+        )
+
+        if existing is not None:
+            return {
+                "executed": False,
+                "action": "create_reminder",
+                "reason": "Reminder already exists.",
+                "reminder": existing,
+                "reminder_created": False,
             }
 
         reminder = self.reminders_client.create_reminder(
             user_id=user_id,
             title=decision.reminder_title,
             description=decision.reminder_description,
-            scheduled_for=decision.reminder_scheduled_for,
+            scheduled_for=scheduled_for.isoformat(),
             recurrence=decision.reminder_recurrence,
             status=decision.reminder_status or "pending",
         )
@@ -209,6 +261,7 @@ class ActionExecutor:
             "action": "create_reminder",
             "reminder": reminder,
             "reminder_created": True,
+            "scheduled_for": scheduled_for.isoformat(),
         }
 
     def _create_project(

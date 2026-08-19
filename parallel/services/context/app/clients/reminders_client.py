@@ -32,3 +32,32 @@ class RemindersClient:
         response.raise_for_status()
 
         return response.json()
+
+    def get_by_details(
+        self,
+        user_id: str,
+        title: str,
+        scheduled_for: str,
+    ):
+        response = httpx.get(
+            f"{self.base_url}/reminders",
+            headers={
+                "X-User-Id": user_id,
+            },
+            timeout=10.0,
+        )
+
+        response.raise_for_status()
+
+        reminders = response.json()
+
+        for reminder in reminders:
+            if (
+                reminder.get("title", "").strip().casefold()
+                == title.strip().casefold()
+                and reminder.get("scheduled_for")
+                == scheduled_for
+            ):
+                return reminder
+
+        return None

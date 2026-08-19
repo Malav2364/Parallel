@@ -48,6 +48,8 @@ class ContextDecision(BaseModel):
     reminder_title: str | None = None
     reminder_description: str | None = None
     reminder_scheduled_for: str | None = None
+    reminder_date: str | None = None
+    reminder_time: str | None = None
     reminder_recurrence: str | None = None
     reminder_status: str | None = "pending"
 

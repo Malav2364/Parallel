@@ -1,5 +1,6 @@
 from google import genai
-
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from app.core.config import settings
 from app.schemas import ContextDecision
 from app.services.context_extractor import ContextExtraction
@@ -18,13 +19,58 @@ class ContextDecisionEngine:
         current_context: dict,
         extraction: ContextExtraction,
         project_resolution: ProjectResolution | None = None,
+        now = datetime.now(ZoneInfo("Asia/Kolkata"))
     ) -> ContextDecision:
+        current_datetime = now.isoformat()
+        current_date = now.date().isoformat()
         prompt = f"""
 You are the decision component of PIOS, a Personal Intelligence Operating
 System.
 
 Determine whether the user's message represents something PIOS should react
 to.
+
+IMPORTANT CURRENT TIME RULE:
+
+The current date and time is:
+
+{current_datetime}
+
+The current date is:
+
+{current_date}
+
+The user's timezone is:
+
+Asia/Kolkata
+
+NEVER invent or assume the current date.
+
+For reminder requests, DO NOT calculate an absolute calendar date yourself.
+
+Instead, extract the user's temporal intent using:
+
+- reminder_date
+- reminder_time
+- reminder_recurrence
+
+Examples:
+
+"tomorrow" → reminder_date = "tomorrow"
+
+"today" → reminder_date = "today"
+
+"next Monday" → reminder_date = "next Monday"
+
+"Friday" → reminder_date = "Friday"
+
+"at 8 PM" → reminder_time = "20:00"
+
+"at 7:30 AM" → reminder_time = "07:30"
+
+Do not put a guessed absolute date into reminder_scheduled_for.
+
+The application will calculate the actual datetime deterministically.
 
 IMPORTANT STATE MODEL:
 
@@ -824,9 +870,33 @@ It may also populate:
 - reminder_description
 - reminder_recurrence
 
-`reminder_title` describes WHAT the user should be reminded about.
+`reminder_date` represents the user's temporal expression.
 
-`reminder_scheduled_for` MUST be an ISO-8601 datetime string.
+Examples:
+
+"today"
+"tomorrow"
+"Friday"
+"next Monday"
+
+`reminder_time` MUST use 24-hour HH:MM format.
+
+Examples:
+
+"8 PM" → "20:00"
+"8:30 PM" → "20:30"
+"7 AM" → "07:00"
+
+Do NOT calculate the calendar date.
+
+Do NOT guess the year.
+
+Do NOT generate reminder_scheduled_for.
+
+The application will resolve reminder_date and reminder_time using the
+actual current datetime.
+
+`reminder_title` describes WHAT the user should be reminded about.
 
 `reminder_recurrence` should be null for a one-time reminder.
 
