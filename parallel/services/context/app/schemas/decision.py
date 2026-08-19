@@ -13,11 +13,11 @@ SignalType = Literal[
 
 ActionType = Literal[
     "none",
-    # "update_context",
     "create_goal",
     "create_habit",
     "create_project",
     "suggest_space",
+    "create_reminder",
 ]
 
 
@@ -43,6 +43,13 @@ class ContextDecision(BaseModel):
     habit_schedule: str | None = None
     habit_time_window: str | None = None
     habit_status: str | None = "active"
+
+    # Reminder_Services
+    reminder_title: str | None = None
+    reminder_description: str | None = None
+    reminder_scheduled_for: str | None = None
+    reminder_recurrence: str | None = None
+    reminder_status: str | None = "pending"
 
 
 class ContextSignal(BaseModel):

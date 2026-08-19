@@ -3,6 +3,7 @@ from app.clients.projects_client import ProjectsClient
 from app.clients.workspace_client import WorkspaceClient
 from app.schemas.decision import ContextDecision
 from app.clients.habits_client import HabitsClient
+from app.clients.reminders_client import RemindersClient
 
 
 class ActionExecutor:
@@ -12,11 +13,13 @@ class ActionExecutor:
         workspace_client: WorkspaceClient,
         goals_client: GoalsClient | None = None,
         habits_client: HabitsClient | None = None,
+        reminders_client: RemindersClient | None = None,
     ) -> None:
         self.projects_client = projects_client
         self.workspace_client = workspace_client
         self.goals_client = goals_client
         self.habits_client = habits_client
+        self.reminders_client = reminders_client
 
     def execute(
         self,
@@ -43,6 +46,12 @@ class ActionExecutor:
         
         if decision.action == "create_habit":
             return self._create_habit(
+                user_id=user_id,
+                decision=decision,
+            )
+
+        if decision.action == "create_reminder":
+            return self._create_reminder(
                 user_id=user_id,
                 decision=decision,
             )
@@ -158,6 +167,48 @@ class ActionExecutor:
             "action": "create_habit",
             "habit": habit,
             "habit_created": True,
+        }
+
+    def _create_reminder(
+        self,
+        user_id: str,
+        decision: ContextDecision,
+    ) -> dict:
+        if self.reminders_client is None:
+            return {
+                "executed": False,
+                "action": "create_reminder",
+                "reason": "Reminders client is not configured.",
+            }
+
+        if not decision.reminder_title:
+            return {
+                "executed": False,
+                "action": "create_reminder",
+                "reason": "Reminder title was not provided.",
+            }
+
+        if not decision.reminder_scheduled_for:
+            return {
+                "executed": False,
+                "action": "create_reminder",
+                "reason": "Reminder scheduled time was not provided.",
+            }
+
+        reminder = self.reminders_client.create_reminder(
+            user_id=user_id,
+            title=decision.reminder_title,
+            description=decision.reminder_description,
+            scheduled_for=decision.reminder_scheduled_for,
+            recurrence=decision.reminder_recurrence,
+            status=decision.reminder_status or "pending",
+        )
+
+        return {
+            "executed": True,
+            "action": "create_reminder",
+            "reminder": reminder,
+            "reminder_created": True,
         }
 
     def _create_project(

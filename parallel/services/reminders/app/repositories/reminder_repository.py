@@ -155,8 +155,6 @@ class ReminderRepository:
 
         return reminder
 
-        return reminder
-
     def mark_sent(
         self,
         reminder: Reminder,
@@ -204,3 +202,19 @@ class ReminderRepository:
         self.db.refresh(reminder)
 
         return reminder
+
+    def get_duplicate(
+        self,
+        owner_id: str,
+        title: str,
+        scheduled_for: datetime,
+        recurrence: str | None,
+    ) -> Reminder | None:
+        statement = select(Reminder).where(
+            Reminder.owner_id == owner_id,
+            Reminder.title == title,
+            Reminder.scheduled_for == scheduled_for,
+            Reminder.recurrence == recurrence,
+        )
+
+        return self.db.scalar(statement)

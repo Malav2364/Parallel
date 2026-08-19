@@ -698,6 +698,205 @@ Examples:
   → existing project activity + new habit
   → create_habit if the habit is not already represented
 
+  IMPORTANT REMINDER RULES:
+
+Use signal type `context_update` or `habit` according to the underlying
+meaning of the user's message, but use action `create_reminder` ONLY when
+the user explicitly asks PIOS to remind, notify, alert, or prompt them about
+something at a specified future time or recurring schedule.
+
+Examples of explicit reminder requests:
+
+- "Remind me tomorrow at 8 PM to study SQL."
+- "Remind me every morning at 7 to exercise."
+- "Set a reminder for Friday at 6 PM to submit my assignment."
+- "Notify me every Monday at 9 AM about the project meeting."
+
+These should use:
+
+action = "create_reminder"
+
+Do NOT create a reminder merely because the user describes a habit.
+
+Examples:
+
+- "I study SQL every evening at 8 PM."
+  → create_habit
+  → NOT create_reminder
+
+- "I exercise every morning."
+  → create_habit
+  → NOT create_reminder
+
+- "I read for 30 minutes before sleeping."
+  → create_habit
+  → NOT create_reminder
+
+If the user explicitly requests both a habit and a reminder:
+
+"I study SQL every evening at 8 PM. Remind me every evening."
+
+The message may contain both:
+- habit signal
+- reminder intent
+
+However, only ONE executable action can be returned.
+
+In that situation, prefer `create_reminder` only when the reminder request
+is explicit and actionable. The habit itself may still be represented in the
+signals array.
+
+REMINDER EXAMPLES:
+
+User:
+"Remind me tomorrow at 8 PM to call Mom."
+
+Result:
+
+{{
+    "signals": [
+        {{
+            "type": "context_update",
+            "description": "User explicitly requested a reminder to call Mom.",
+            "significance": 0.8,
+            "name": "Call Mom"
+        }}
+    ],
+    "action": "create_reminder",
+    "reason": "The user explicitly requested a future reminder.",
+    "reminder_title": "Call Mom",
+    "reminder_description": null,
+    "reminder_scheduled_for": "<ISO-8601 datetime>",
+    "reminder_recurrence": null,
+    "reminder_status": "pending"
+}}
+
+User:
+"I call Mom every Sunday."
+
+Result:
+
+{{
+    "signals": [
+{        {
+            "type": "habit",
+            "description": "User calls Mom every Sunday.",
+            "significance": 0.7,
+            "name": "Call Mom"
+        }}
+    ],
+    "action": "create_habit"
+}}
+
+User:
+"Remind me every Sunday to call Mom."
+
+Result:
+
+{{
+    "signals": [
+{        {
+            "type": "context_update",
+            "description": "User explicitly requested a recurring reminder to call Mom.",
+            "significance": 0.8,
+            "name": "Call Mom"
+        }}
+    ],
+    "action": "create_reminder",
+    "reason": "The user explicitly requested a recurring reminder.",
+    "reminder_title": "Call Mom",
+    "reminder_description": null,
+    "reminder_scheduled_for": "<next Sunday ISO-8601 datetime>",
+    "reminder_recurrence": "weekly",
+    "reminder_status": "pending"
+}}
+
+IMPORTANT REMINDER OUTPUT RULE:
+
+When action is `create_reminder`, the decision MUST populate:
+
+- reminder_title
+- reminder_scheduled_for
+- reminder_status
+
+It may also populate:
+
+- reminder_description
+- reminder_recurrence
+
+`reminder_title` describes WHAT the user should be reminded about.
+
+`reminder_scheduled_for` MUST be an ISO-8601 datetime string.
+
+`reminder_recurrence` should be null for a one-time reminder.
+
+For recurring reminders, use a concise recurrence value such as:
+
+- "daily"
+- "weekly"
+- "monthly"
+- "weekdays"
+
+Examples:
+
+User:
+"Remind me tomorrow at 8 PM to study SQL."
+
+Return:
+
+{{
+    "action": "create_reminder",
+    "reminder_title": "Study SQL",
+    "reminder_description": null,
+    "reminder_scheduled_for": "<tomorrow at 20:00 in the user's timezone>",
+    "reminder_recurrence": null,
+    "reminder_status": "pending"
+}}
+
+User:
+"Remind me every day at 8 PM to study SQL."
+
+Return:
+
+{{
+    "action": "create_reminder",
+    "reminder_title": "Study SQL",
+    "reminder_description": null,
+    "reminder_scheduled_for": "<next occurrence at 20:00 in the user's timezone>",
+    "reminder_recurrence": "daily",
+    "reminder_status": "pending"
+}}
+
+User:
+"Remind me every Monday at 9 AM to review my projects."
+
+Return:
+
+{{
+    "action": "create_reminder",
+    "reminder_title": "Review projects",
+    "reminder_description": null,
+    "reminder_scheduled_for": "<next Monday at 09:00 in the user's timezone>",
+    "reminder_recurrence": "weekly",
+    "reminder_status": "pending"
+}}
+
+Never put the reminder time only inside the signal description.
+The structured `reminder_scheduled_for` field MUST contain it.
+
+Never create a reminder when the user merely describes a habit.
+
+The distinction is:
+
+" I study every evening."
+→ habit
+
+"Remind me every evening to study."
+→ reminder
+
+" I study every evening. Remind me every evening."
+→ habit signal + reminder action
+
 Return the signals, exactly one action, and reason.
 """
 
