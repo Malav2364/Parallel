@@ -42,6 +42,11 @@ $services = @(
         Name = "Notifications"
         Path = Join-Path $root "services\notifications"
         Port = 8007
+    },
+    @{
+        Name = "Reminders"
+        Path = Join-Path $root "services\reminders"
+        Port = 8008
     }
 )
 
@@ -75,4 +80,5 @@ Write-Host "Spaces   : http://localhost:8003"
 Write-Host "Context  : http://localhost:8004"
 Write-Host "Goals  : http://localhost:8005"
 Write-Host "Habits  : http://localhost:8006"
-Write-Host "Habits  : http://localhost:8007"
+Write-Host "Notifications  : http://localhost:8007"
+Write-Host "Reminders  : http://localhost:8008"
