@@ -1,7 +1,7 @@
 from fastapi import Depends
 from sqlalchemy.orm import Session
 from app.clients.habits_client import HabitsClient
-
+from app.clients.reminders_client import RemindersClient
 from app.clients.goals_client import GoalsClient
 from app.clients.projects_client import ProjectsClient
 from app.clients.workspace_client import WorkspaceClient
@@ -49,6 +49,9 @@ def get_goals_client() -> GoalsClient:
 def get_habits_client() -> HabitsClient:
     return HabitsClient()
 
+def get_reminders_client() -> RemindersClient:
+    return RemindersClient()
+
 def get_workspace_client() -> WorkspaceClient:
     return WorkspaceClient()
 
@@ -68,10 +71,12 @@ def get_action_executor(
     workspace_client: WorkspaceClient = Depends(get_workspace_client),
     goals_client: GoalsClient = Depends(get_goals_client),
     habits_client: HabitsClient = Depends(get_habits_client),
+    reminders_client: RemindersClient = Depends(get_reminders_client),
 ) -> ActionExecutor:
     return ActionExecutor(
         projects_client,
         workspace_client,
         goals_client,
         habits_client,
+        reminders_client,
     )

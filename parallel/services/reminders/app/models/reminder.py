@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, String, Text, func, Integer
+from sqlalchemy import DateTime, String, Text, func, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -9,6 +9,16 @@ from app.core.database import Base
 
 class Reminder(Base):
     __tablename__ = "reminders"
+
+    __table_args__ = (
+            UniqueConstraint(
+                "owner_id",
+                "title",
+                "scheduled_for",
+                "recurrence",
+                name="uq_reminder_owner_title_schedule_recurrence",
+                ),
+        )
 
     id: Mapped[str] = mapped_column(
         String(36),

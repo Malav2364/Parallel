@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     HABITS_SERVICE_URL: str
     PROJECTS_SERVICE_URL: str
     GOALS_SERVICE_URL: str
-
+    REMINDERS_SERVICE_URL: str
     GEMINI_API_KEY: str
     CONTEXT_MODEL: str
 

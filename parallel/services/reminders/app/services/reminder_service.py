@@ -21,10 +21,21 @@ class ReminderService:
         request: ReminderCreate,
         owner_id: str,
     ) -> Reminder:
+        title = request.title.strip()
+
+        existing = self.repository.get_duplicate(
+            owner_id=owner_id,
+            title=title,
+            scheduled_for=request.scheduled_for,
+            recurrence=request.recurrence,
+        )
+
+        if existing is not None:
+            return existing
 
         reminder = Reminder(
             owner_id=owner_id,
-            title=request.title.strip(),
+            title=title,
             description=request.description,
             scheduled_for=request.scheduled_for,
             recurrence=request.recurrence,
