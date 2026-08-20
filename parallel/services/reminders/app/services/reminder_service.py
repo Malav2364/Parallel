@@ -3,6 +3,7 @@ from app.services.recurrence_service import RecurrenceService
 from app.models.reminder import Reminder
 from app.core.config import settings
 from app.repositories.reminder_repository import ReminderRepository
+from app.utils.datetime_utils import normalize_to_utc
 from app.schemas.reminder import (
     ReminderCreate,
     ReminderUpdate,
@@ -32,6 +33,11 @@ class ReminderService:
 
         if existing is not None:
             return existing
+
+        scheduled_for = normalize_to_utc(
+            request.scheduled_for,
+            request.timezone,
+        )
 
         reminder = Reminder(
             owner_id=owner_id,
@@ -82,7 +88,10 @@ class ReminderService:
             reminder.description = request.description
 
         if request.scheduled_for is not None:
-            reminder.scheduled_for = request.scheduled_for
+            reminder.scheduled_for = normalize_to_utc(
+                request.scheduled_for,
+                request.timezone or "Asia/Kolkata",
+            )
 
         if request.recurrence is not None:
             reminder.recurrence = request.recurrence
@@ -149,6 +158,7 @@ class ReminderService:
         self,
         reminder: Reminder,
     ) -> Reminder:
+
         next_occurrence = (
             RecurrenceService.get_next_occurrence(
                 scheduled_for=reminder.scheduled_for,

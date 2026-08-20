@@ -1,26 +1,24 @@
-from datetime import datetime
 from calendar import monthrange
+from datetime import datetime, timedelta
 
 
 class RecurrenceService:
+
     @staticmethod
     def get_next_occurrence(
         scheduled_for: datetime,
         recurrence: str | None,
     ) -> datetime | None:
+
         if not recurrence:
             return None
 
         recurrence = recurrence.strip().lower()
 
         if recurrence == "daily":
-            from datetime import timedelta
-
             return scheduled_for + timedelta(days=1)
 
         if recurrence == "weekly":
-            from datetime import timedelta
-
             return scheduled_for + timedelta(days=7)
 
         if recurrence == "monthly":
@@ -44,6 +42,6 @@ class RecurrenceService:
                 day=day,
             )
 
-        raise ValueError(
-            f"Unsupported recurrence: {recurrence}"
-        )
+        # Invalid recurrence values are treated
+        # as one-time reminders.
+        return None

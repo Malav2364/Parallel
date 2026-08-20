@@ -1,0 +1,10 @@
+INFO:     Will watch for changes in these directories: ['D:\\parallel\\parallel\\services\\notifications']
+INFO:     Uvicorn running on http://127.0.0.1:8007 (Press CTRL+C to quit)
+INFO:     Started reloader process [17452] using StatReload
+INFO:     Started server process [19416]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:28742 - "POST /api/v1/notifications HTTP/1.1" 201 Created
+INFO:     127.0.0.1:28745 - "POST /api/v1/notifications HTTP/1.1" 201 Created
+INFO:     127.0.0.1:53365 - "POST /api/v1/notifications HTTP/1.1" 201 Created
+INFO:     127.0.0.1:21630 - "POST /api/v1/notifications HTTP/1.1" 201 Created

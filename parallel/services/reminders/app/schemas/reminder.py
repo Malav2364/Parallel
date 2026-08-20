@@ -1,6 +1,14 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+RecurrenceType = Literal[
+    "daily",
+    "weekly",
+    "monthly",
+]
 
 
 class ReminderCreate(BaseModel):
@@ -13,10 +21,12 @@ class ReminderCreate(BaseModel):
 
     scheduled_for: datetime
 
-    recurrence: str | None = Field(
-        default=None,
+    timezone: str = Field(
+        default="Asia/Kolkata",
         max_length=100,
     )
+
+    recurrence: RecurrenceType | None = None
 
     status: str = Field(
         default="pending",
@@ -35,10 +45,12 @@ class ReminderUpdate(BaseModel):
 
     scheduled_for: datetime | None = None
 
-    recurrence: str | None = Field(
+    timezone: str | None = Field(
         default=None,
         max_length=100,
     )
+
+    recurrence: RecurrenceType | None = None
 
     status: str | None = Field(
         default=None,
@@ -57,6 +69,6 @@ class ReminderResponse(BaseModel):
     description: str | None
     scheduled_for: datetime
     status: str
-    recurrence: str | None
+    recurrence: RecurrenceType | None = None
     created_at: datetime
     updated_at: datetime

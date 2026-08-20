@@ -92,6 +92,7 @@ class ReminderRepository:
             .values(
                 status="processing",
                 updated_at=now,
+                processing_started_at=now,
             )
             .returning(Reminder)
         )

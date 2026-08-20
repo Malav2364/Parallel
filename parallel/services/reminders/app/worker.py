@@ -85,22 +85,42 @@ class ReminderWorker:
             return
 
         try:
+                # --------------------------------------------------
+                # Send notification
+                # --------------------------------------------------
+
+                self.notifications_client.create_notification(
+                    user_id=reminder.owner_id,
+                    title=reminder.title,
+                    message=(
+                        reminder.description
+                        or f"Reminder: {reminder.title}"
+                    ),
+                    notification_type="reminder",
+                )
+
+        except Exception as exc:
             # --------------------------------------------------
-            # Send notification
+            # Notification failed
             # --------------------------------------------------
 
-            self.notifications_client.create_notification(
-                user_id=reminder.owner_id,
-                title=reminder.title,
-                message=(
-                    reminder.description
-                    or f"Reminder: {reminder.title}"
-                ),
-                notification_type="reminder",
+            service.mark_failed(
+                reminder,
+                str(exc),
             )
 
+            logger.exception(
+                "Reminder notification failed: %s (%s)",
+                reminder.id,
+                reminder.title,
+            )
+
+            return
+
+
+        try:
             # --------------------------------------------------
-            # Mark successful
+            # Notification succeeded
             # --------------------------------------------------
 
             service.complete_reminder(reminder)
@@ -111,18 +131,14 @@ class ReminderWorker:
                 reminder.title,
             )
 
-        except Exception as exc:
+        except Exception:
             # --------------------------------------------------
-            # Mark failed / schedule retry
+            # Notification was already delivered.
+            # Do NOT mark the reminder pending again.
             # --------------------------------------------------
-
-            service.mark_failed(
-                reminder,
-                str(exc),
-            )
 
             logger.exception(
-                "Reminder failed: %s (%s)",
+                "Notification sent but reminder completion failed: %s (%s)",
                 reminder.id,
                 reminder.title,
             )
