@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Header
-
+import copy
 from app.api.deps import (
     get_action_executor,
     get_context_decision_engine,
@@ -154,9 +154,11 @@ def process_context(
         x_user_id,
     )
 
+    original_context = copy.deepcopy(context.context)
+
     extraction = extractor.extract(
         user_input=request.message,
-        current_context=context.context,
+        current_context=original_context,
     )
 
     context_update = context_service.apply_updates(
@@ -202,8 +204,9 @@ def process_context(
 
     decision = decision_engine.evaluate(
         user_input=request.message,
-        current_context=context_update.context,
+        current_context=context.context,
         extraction=extraction,
+        project_resolution=resolution,
     )
 
     execution = executor.execute(

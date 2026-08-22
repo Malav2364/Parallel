@@ -31,6 +31,32 @@ class WorkspaceClient:
         response.raise_for_status()
         return response.json()
 
+    def get_by_name(
+        self,
+        user_id: str,
+        name: str,
+    ) -> dict | None:
+        normalized_name = name.strip().lower()
+
+        response = httpx.get(
+            f"{self.base_url}/spaces",
+            headers={"X-User-Id": user_id},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+
+        spaces = response.json()
+
+        return next(
+            (
+                space
+                for space in spaces
+                if space.get("name", "").strip().lower()
+                == normalized_name
+            ),
+            None,
+        )
+
     def associate_project(
         self,
         space_id: str,

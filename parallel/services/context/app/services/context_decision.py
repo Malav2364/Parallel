@@ -1,8 +1,10 @@
 from google import genai
-
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from app.core.config import settings
 from app.schemas import ContextDecision
 from app.services.context_extractor import ContextExtraction
+from app.schemas import ProjectResolution
 
 
 class ContextDecisionEngine:
@@ -16,7 +18,11 @@ class ContextDecisionEngine:
         user_input: str,
         current_context: dict,
         extraction: ContextExtraction,
+        project_resolution: ProjectResolution | None = None,
+        now = datetime.now(ZoneInfo("Asia/Kolkata"))
     ) -> ContextDecision:
+        current_datetime = now.isoformat()
+        current_date = now.date().isoformat()
         prompt = f"""
 You are the decision component of PIOS, a Personal Intelligence Operating
 System.
@@ -24,19 +30,90 @@ System.
 Determine whether the user's message represents something PIOS should react
 to.
 
-Current context:
+IMPORTANT CURRENT TIME RULE:
+
+The current date and time is:
+
+{current_datetime}
+
+The current date is:
+
+{current_date}
+
+The user's timezone is:
+
+Asia/Kolkata
+
+NEVER invent or assume the current date.
+
+For reminder requests, DO NOT calculate an absolute calendar date yourself.
+
+Instead, extract the user's temporal intent using:
+
+- reminder_date
+- reminder_time
+- reminder_recurrence
+
+Examples:
+
+"tomorrow" → reminder_date = "tomorrow"
+
+"today" → reminder_date = "today"
+
+"next Monday" → reminder_date = "next Monday"
+
+"Friday" → reminder_date = "Friday"
+
+"at 8 PM" → reminder_time = "20:00"
+
+"at 7:30 AM" → reminder_time = "07:30"
+
+Do not put a guessed absolute date into reminder_scheduled_for.
+
+The application will calculate the actual datetime deterministically.
+
+IMPORTANT STATE MODEL:
+
+`current_context` represents the user's persistent state BEFORE the
+current user message was processed.
+
+`extraction.updates` represents NEW information detected FROM the current
+user message.
+
+The extracted updates are NOT evidence that those entities already existed.
+
+When determining whether something is genuinely new:
+
+- Existing goals MUST be determined only from `current_context["goals"]`.
+- Existing projects MUST be determined only from the Project Resolver.
+- Existing habits MUST be determined only from `current_context["habits"]`.
+- Existing interests MUST be determined only from `current_context["interests"]`.
+
+NEVER treat `extraction.updates` as existing context.
+
+Current context BEFORE this message:
 {current_context}
 
 User message:
 {user_input}
 
-Extracted current-state updates:
+Project resolution:
+{project_resolution}
+
+NEW information extracted FROM this message:
 {extraction.updates}
 
 IMPORTANT ARCHITECTURE RULE:
 
-Personal context updates are already processed before the
-Decision Engine runs.
+The Context Service may persist the extracted updates before the Decision
+Engine executes.
+
+However, `current_context` supplied to this Decision Engine represents the
+state BEFORE the current message's updates.
+
+Therefore, use `current_context` to determine what already existed before
+this message, and use `extraction` to determine what was newly introduced
+by this message.
 
 Existing project activity updates are also already processed
 before the Decision Engine runs.
@@ -90,6 +167,34 @@ Therefore the Decision Engine must return:
   have already been updated. No additional action is required."
 }}
 
+IMPORTANT PROJECT RESOLUTION RULE:
+
+The Project Resolver is the authoritative source for whether an
+equivalent existing project exists.
+
+If project_resolution.matched is false:
+
+- There is NO existing project matching the user's message.
+- If the user message describes a concrete ongoing initiative,
+  the Decision Engine MUST consider it a new project.
+- A related goal, current_focus, or other context entry MUST NOT
+  suppress project creation.
+
+If project_resolution.matched is true:
+
+- The referenced project already exists.
+- Do NOT create another project for the same initiative.
+- If the message only describes progress, status, tasks, milestones,
+  bugs, or activity on that project, return action "none".
+
+Never infer project existence from:
+- goals
+- current_focus
+- interests
+- habits
+- extraction.updates
+
+Only Project Resolver determines existing project existence.
 
 IMPORTANT DISTINCTION:
 
@@ -109,6 +214,39 @@ Therefore:
 When deciding whether to create a project, use the user's message and the
 available project-resolution information rather than assuming that a matching
 goal means the project already exists.
+
+IMPORTANT:
+
+A user's current_focus may describe a newly introduced project.
+
+Do NOT assume that a current_focus entry means the project already exists.
+
+Example:
+
+Original context:
+goals = [
+    "Become an expert at financial planning"
+]
+
+User:
+"I want to build a personal finance tracker for students."
+
+Extraction:
+current_focus = "personal finance tracker development"
+
+Project resolution:
+matched = false
+
+Correct result:
+
+signals:
+  - type = "project"
+    name = "Personal finance tracker"
+
+action = "create_project"
+
+The related financial-planning goal does NOT mean that the
+personal finance tracker project already exists.
 
 Rules:
 
@@ -227,25 +365,12 @@ Rules:
     -> interest
     -> action none
 
-12. Use action create_goal only when the user introduces a genuinely new
-    goal that does not represent a concrete project.
 
-    If a new goal clearly describes a concrete project or ongoing initiative,
-    prefer create_project instead of create_goal.
-
-13. The Context Service may have already processed the user's message and
-    stored a goal, interest, or context update before the Decision Engine
-    runs.
-
-    Do NOT use this fact alone as a reason to return action none.
-
-    Context processing and project existence are separate concerns.
-
-14. Return action none for a project-related message ONLY when the referenced
+12. Return action none for a project-related message ONLY when the referenced
     project already exists and the message merely reports progress,
     status, or activity on that existing project.
 
-15. If the project resolver reports no matching existing project and the
+13. If the project resolver reports no matching existing project and the
     user's message clearly describes a new concrete project, prefer
     create_project.
 
@@ -334,26 +459,19 @@ Rules:
     - a temporary task,
     - or an activity that belongs to an existing project.
 
-24. Use action create_goal only when the user introduces a genuinely new
-    goal that is not already represented in the current context AND the
-    goal does not itself describe a concrete ongoing project.
-
-    If the new goal describes a concrete project or initiative, use
-    create_project instead.
-
-25. When action is `create_project` and the project represents a significant
+24. When action is `create_project` and the project represents a significant
     ongoing initiative, business, professional activity, career initiative,
     or major life area, provide `space_candidate` using a concise name
     appropriate for the persistent area.
 
-26. A Space represents a persistent area of the user's life or work.
+25. A Space represents a persistent area of the user's life or work.
 
     A Project represents a specific initiative within that area.
 
     Do not create or suggest a Space merely because a topic was mentioned
     once.
 
-27. A significant new project will normally justify a dedicated Space.
+26. A significant new project will normally justify a dedicated Space.
 
     Examples:
 
@@ -362,20 +480,20 @@ Rules:
     - Photography portfolio → project + Space
     - YouTube photography channel → project + Space
 
-28. A simple interest does not justify a Space.
+27. A simple interest does not justify a Space.
 
     Example:
 
     - "I might learn photography someday."
       → interest, no project, no Space
 
-29. Use action `suggest_space` only when a persistent area is clearly
+28. Use action `suggest_space` only when a persistent area is clearly
     appropriate but creating a project is not the correct next action.
 
-30. Do not use `suggest_space` merely because the user mentions a topic,
+29. Do not use `suggest_space` merely because the user mentions a topic,
     interest, goal, or temporary activity.
 
-31. Do not create duplicate entities merely because a related entity of a
+30. Do not create duplicate entities merely because a related entity of a
     DIFFERENT TYPE already exists.
 
     Goals, habits, projects, interests, and Spaces are separate entity types.
@@ -389,19 +507,17 @@ Rules:
     The existence of a project does NOT mean that a corresponding goal
     already exists.
 
-32. When deciding whether to create a project, compare the proposed project
+31. When deciding whether to create a project, compare the proposed project
     ONLY against existing projects.
 
     Do not use goals, interests, habits, or other context fields as evidence
     that the project already exists.
 
-33. When deciding whether to create a goal, compare the proposed goal ONLY
-    against existing goals.
 
-34. When deciding whether to create a habit, compare the proposed habit ONLY
+32. When deciding whether to create a habit, compare the proposed habit ONLY
     against existing habits.
 
-35. A goal and a project may represent the same broader objective while still
+33. A goal and a project may represent the same broader objective while still
     being separate entities.
 
     Example:
@@ -415,7 +531,7 @@ Rules:
     If no equivalent project exists, the correct action is:
     "create_project"
 
-36. Use action create_project when the user introduces a concrete ongoing
+34. Use action create_project when the user introduces a concrete ongoing
     initiative and there is no equivalent EXISTING PROJECT.
 
     Never prevent create_project solely because a related goal already exists.
@@ -435,7 +551,7 @@ Rules:
     The Decision Engine should return `create_habit` if that habit is not
     already represented.
 
-37. When a message contains an existing project activity and an already-known
+35. When a message contains an existing project activity and an already-known
     goal or context update, return action `none`.
 
     Example:
@@ -446,36 +562,143 @@ Rules:
 
     → action = `none`
 
-38. If a new project is introduced together with a new goal, choose the
+36. If a new project is introduced together with a new goal, choose the
     single most appropriate executable action.
 
     Prefer `create_project` when the project itself is the concrete ongoing
     initiative that operationalizes the goal.
 
-39. If a new recurring behavior is introduced for an existing goal, prefer
+37. If a new recurring behavior is introduced for an existing goal, prefer
     `create_habit` rather than `create_goal`.
 
-40. If a user merely expresses interest without a concrete intended outcome,
+38. If a user merely expresses interest without a concrete intended outcome,
     do not create a goal, project, habit, or Space.
 
-41. If the user explicitly describes a recurring behavior, do not downgrade
+39. If the user explicitly describes a recurring behavior, do not downgrade
     it to a generic goal simply because it supports an existing goal.
 
-42. The `signals` array describes the meaning of the user's message.
+40. The `signals` array describes the meaning of the user's message.
     The `action` describes only the next additional operation PIOS should
     perform.
 
-43. Do not return a `decision` field. The `signals` array replaces the old
+41. Do not return a `decision` field. The `signals` array replaces the old
     single decision field.
 
-44. Return exactly one action and one reason.
+42. Return exactly one action and one reason.
 
-45. If no additional action is required, return:
+43. If no additional action is required, return:
 
     `"action": "none"`
 
     and explain that the relevant context and/or project activity has
     already been processed.
+
+    IMPORTANT GOAL PROCESSING RULE:
+
+The Context Service may process and persist newly extracted goals before
+the Decision Engine runs.
+
+Therefore, the presence of a goal in the UPDATED context must NOT be
+used as evidence that the goal existed before the current user message.
+
+When determining whether a goal is genuinely new, compare the proposed
+goal against the goals in the ORIGINAL context supplied to this evaluation.
+
+The `extraction.updates.goals_to_add` field represents goals detected from
+the CURRENT user message.
+
+If `goals_to_add` contains a goal that was not already present in the
+ORIGINAL context, and the goal does not represent a concrete project,
+the Decision Engine should return:
+
+"action": "create_goal"
+
+with the appropriate `goal_name`, `goal_status`, and other goal fields.
+
+Example:
+
+Original context:
+goals = [
+    "Become excellent at public speaking"
+]
+
+Current message:
+"I want to own a private island."
+
+Extraction:
+goals_to_add = [
+    "Own a private island"
+]
+
+Correct decision:
+
+{{
+    "action": "create_goal",
+    "goal_name": "Own a private island",
+    "goal_status": "active"
+}}
+
+Do NOT return action "none" merely because the updated context now contains
+"Own a private island".
+
+IMPORTANT HABIT OUTPUT RULE:
+
+When action is "create_habit", the decision MUST populate:
+
+- habit_name
+- habit_schedule
+- habit_status
+- optionally habit_description
+- optionally habit_time_window
+
+`habit_name` describes WHAT the recurring behavior is.
+
+`habit_schedule` describes WHEN or HOW OFTEN the behavior occurs.
+
+`habit_time_window` should be populated when the user provides a specific
+time window.
+
+Examples:
+
+User:
+"I study for my MBA every evening from 7 to 9."
+
+Return:
+
+{{
+    "action": "create_habit",
+    "habit_name": "MBA study",
+    "habit_schedule": "daily",
+    "habit_time_window": "19:00-21:00",
+    "habit_status": "active"
+}}
+
+User:
+"I go to the gym five days a week."
+
+Return:
+
+{{
+    "action": "create_habit",
+    "habit_name": "Go to the gym",
+    "habit_schedule": "5 days per week",
+    "habit_status": "active"
+}}
+
+User:
+"I practice coding every morning."
+
+Return:
+
+{{
+    "action": "create_habit",
+    "habit_name": "Coding practice",
+    "habit_schedule": "every morning",
+    "habit_status": "active"
+}}
+
+Do NOT put the schedule only inside the signal description.
+The structured `habit_schedule` field must contain it.
 
 Examples:
 
@@ -520,6 +743,229 @@ Examples:
   exams every evening."
   → existing project activity + new habit
   → create_habit if the habit is not already represented
+
+  IMPORTANT REMINDER RULES:
+
+Use signal type `context_update` or `habit` according to the underlying
+meaning of the user's message, but use action `create_reminder` ONLY when
+the user explicitly asks PIOS to remind, notify, alert, or prompt them about
+something at a specified future time or recurring schedule.
+
+Examples of explicit reminder requests:
+
+- "Remind me tomorrow at 8 PM to study SQL."
+- "Remind me every morning at 7 to exercise."
+- "Set a reminder for Friday at 6 PM to submit my assignment."
+- "Notify me every Monday at 9 AM about the project meeting."
+
+These should use:
+
+action = "create_reminder"
+
+Do NOT create a reminder merely because the user describes a habit.
+
+Examples:
+
+- "I study SQL every evening at 8 PM."
+  → create_habit
+  → NOT create_reminder
+
+- "I exercise every morning."
+  → create_habit
+  → NOT create_reminder
+
+- "I read for 30 minutes before sleeping."
+  → create_habit
+  → NOT create_reminder
+
+If the user explicitly requests both a habit and a reminder:
+
+"I study SQL every evening at 8 PM. Remind me every evening."
+
+The message may contain both:
+- habit signal
+- reminder intent
+
+However, only ONE executable action can be returned.
+
+In that situation, prefer `create_reminder` only when the reminder request
+is explicit and actionable. The habit itself may still be represented in the
+signals array.
+
+REMINDER EXAMPLES:
+
+User:
+"Remind me tomorrow at 8 PM to call Mom."
+
+Result:
+
+{{
+    "signals": [
+        {{
+            "type": "context_update",
+            "description": "User explicitly requested a reminder to call Mom.",
+            "significance": 0.8,
+            "name": "Call Mom"
+        }}
+    ],
+    "action": "create_reminder",
+    "reason": "The user explicitly requested a future reminder.",
+    "reminder_title": "Call Mom",
+    "reminder_description": null,
+    "reminder_scheduled_for": "<ISO-8601 datetime>",
+    "reminder_recurrence": null,
+    "reminder_status": "pending"
+}}
+
+User:
+"I call Mom every Sunday."
+
+Result:
+
+{{
+    "signals": [
+{        {
+            "type": "habit",
+            "description": "User calls Mom every Sunday.",
+            "significance": 0.7,
+            "name": "Call Mom"
+        }}
+    ],
+    "action": "create_habit"
+}}
+
+User:
+"Remind me every Sunday to call Mom."
+
+Result:
+
+{{
+    "signals": [
+{        {
+            "type": "context_update",
+            "description": "User explicitly requested a recurring reminder to call Mom.",
+            "significance": 0.8,
+            "name": "Call Mom"
+        }}
+    ],
+    "action": "create_reminder",
+    "reason": "The user explicitly requested a recurring reminder.",
+    "reminder_title": "Call Mom",
+    "reminder_description": null,
+    "reminder_scheduled_for": "<next Sunday ISO-8601 datetime>",
+    "reminder_recurrence": "weekly",
+    "reminder_status": "pending"
+}}
+
+IMPORTANT REMINDER OUTPUT RULE:
+
+When action is `create_reminder`, the decision MUST populate:
+
+- reminder_title
+- reminder_scheduled_for
+- reminder_status
+
+It may also populate:
+
+- reminder_description
+- reminder_recurrence
+
+`reminder_date` represents the user's temporal expression.
+
+Examples:
+
+"today"
+"tomorrow"
+"Friday"
+"next Monday"
+
+`reminder_time` MUST use 24-hour HH:MM format.
+
+Examples:
+
+"8 PM" → "20:00"
+"8:30 PM" → "20:30"
+"7 AM" → "07:00"
+
+Do NOT calculate the calendar date.
+
+Do NOT guess the year.
+
+Do NOT generate reminder_scheduled_for.
+
+The application will resolve reminder_date and reminder_time using the
+actual current datetime.
+
+`reminder_title` describes WHAT the user should be reminded about.
+
+`reminder_recurrence` should be null for a one-time reminder.
+
+For recurring reminders, use a concise recurrence value such as:
+
+- "daily"
+- "weekly"
+- "monthly"
+- "weekdays"
+
+Examples:
+
+User:
+"Remind me tomorrow at 8 PM to study SQL."
+
+Return:
+
+{{
+    "action": "create_reminder",
+    "reminder_title": "Study SQL",
+    "reminder_description": null,
+    "reminder_scheduled_for": "<tomorrow at 20:00 in the user's timezone>",
+    "reminder_recurrence": null,
+    "reminder_status": "pending"
+}}
+
+User:
+"Remind me every day at 8 PM to study SQL."
+
+Return:
+
+{{
+    "action": "create_reminder",
+    "reminder_title": "Study SQL",
+    "reminder_description": null,
+    "reminder_scheduled_for": "<next occurrence at 20:00 in the user's timezone>",
+    "reminder_recurrence": "daily",
+    "reminder_status": "pending"
+}}
+
+User:
+"Remind me every Monday at 9 AM to review my projects."
+
+Return:
+
+{{
+    "action": "create_reminder",
+    "reminder_title": "Review projects",
+    "reminder_description": null,
+    "reminder_scheduled_for": "<next Monday at 09:00 in the user's timezone>",
+    "reminder_recurrence": "weekly",
+    "reminder_status": "pending"
+}}
+
+Never put the reminder time only inside the signal description.
+The structured `reminder_scheduled_for` field MUST contain it.
+
+Never create a reminder when the user merely describes a habit.
+
+The distinction is:
+
+" I study every evening."
+→ habit
+
+"Remind me every evening to study."
+→ reminder
+
+" I study every evening. Remind me every evening."
+→ habit signal + reminder action
 
 Return the signals, exactly one action, and reason.
 """

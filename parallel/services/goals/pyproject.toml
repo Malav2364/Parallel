@@ -1,0 +1,32 @@
+[project]
+name = "pios-goals"
+version = "0.1.0"
+description = "Goals Service for PIOS"
+requires-python = ">=3.13"
+
+dependencies = [
+    "alembic>=1.19.0",
+    "fastapi>=0.141.1",
+    "psycopg[binary]>=3.3.4",
+    "pydantic-settings>=2.14.2",
+    "ruff>=0.16.3",
+    "sqlalchemy>=2.0.51",
+    "uvicorn>=0.52.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.1",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/**/*.py" = ["E501"]

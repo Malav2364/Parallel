@@ -99,6 +99,20 @@ services:
       postgres:
         condition: service_healthy
 
+  goals:
+    build:
+      context: ./services/goals
+    container_name: parallel-goals
+    ports:
+      - "8005:8000"
+    volumes:
+      - ./services/goals:/app
+    environment:
+      DATABASE_URL: postgresql+psycopg://parallel_user:parallel123@postgres:5432/pios_goals
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   context:
     build:
       context: ./services/context
@@ -111,10 +125,13 @@ services:
       DATABASE_URL: postgresql+psycopg://parallel_user:parallel123@postgres:5432/parallel_context
       APP_NAME: Parallel Context Service
       APP_VERSION: 1.0.0
+      GOALS_SERVICE_URL: http://goals:8000/api/v1
       LOG_LEVEL: INFO
     depends_on:
       postgres:
         condition: service_healthy
+      goals:
+        condition: service_started
 
   gateway:
     build:
@@ -145,6 +162,8 @@ services:
       spaces:
         condition: service_started
       context:
+        condition: service_started
+      goals:
         condition: service_started
       redis:
         condition: service_healthy

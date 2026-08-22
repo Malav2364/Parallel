@@ -1,24 +1,49 @@
 $ErrorActionPreference = "SilentlyContinue"
 
-$ports = @(8000, 8001, 8002, 8003, 8004)
-$stopped = @{}
+$root = Split-Path -Parent $PSScriptRoot
+$logRoot = Join-Path $root "logs"
 
-foreach ($port in $ports) {
-    $connections = Get-NetTCPConnection -LocalPort $port -State Listen
+Write-Host ""
+Write-Host "Stopping PIOS services..."
 
-    foreach ($connection in $connections) {
-        $processId = $connection.OwningProcess
+# Stop PIOS development processes
+Get-Process -Name "uvicorn" -ErrorAction SilentlyContinue |
+    Stop-Process -Force
 
-        if (-not $stopped.ContainsKey($processId)) {
-            Stop-Process -Id $processId -Force
-            $stopped[$processId] = $true
-            Write-Host "Stopped process $processId on port $port"
-        }
-    }
+Get-Process -Name "python" -ErrorAction SilentlyContinue |
+    Stop-Process -Force
+
+# Give processes a moment to release log files
+Start-Sleep -Seconds 1
+
+# Clear development logs
+if (Test-Path -LiteralPath $logRoot) {
+
+    Write-Host "Clearing logs..."
+
+    Get-ChildItem `
+        -LiteralPath $logRoot `
+        -File `
+        -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
 }
 
-if ($stopped.Count -eq 0) {
-    Write-Host "No PIOS development services were listening on ports 8000-8004."
-} else {
-    Write-Host "PIOS development services stopped."
+Write-Host ""
+Write-Host "========================================"
+Write-Host " PIOS Development Environment Stopped"
+Write-Host "========================================"
+Write-Host ""
+
+if (Test-Path -LiteralPath $logRoot) {
+    $remainingLogs = Get-ChildItem `
+        -LiteralPath $logRoot `
+        -File `
+        -ErrorAction SilentlyContinue
+
+    if ($remainingLogs.Count -eq 0) {
+        Write-Host "Logs cleared."
+    }
+    else {
+        Write-Host "Warning: Some log files could not be removed."
+    }
 }
