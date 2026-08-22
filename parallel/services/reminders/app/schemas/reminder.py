@@ -68,6 +68,7 @@ class ReminderResponse(BaseModel):
     title: str
     description: str | None
     scheduled_for: datetime
+    timezone: str = "Asia/Kolkata"
     status: str
     recurrence: RecurrenceType | None = None
     created_at: datetime

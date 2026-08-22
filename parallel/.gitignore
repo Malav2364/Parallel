@@ -44,3 +44,5 @@ __pycache__/
 .ruff_cache/
 .env
 test.db
+
+.logs
