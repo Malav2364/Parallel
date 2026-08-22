@@ -24,30 +24,30 @@ class ReminderService:
     ) -> Reminder:
         title = request.title.strip()
 
-        existing = self.repository.get_duplicate(
-            owner_id=owner_id,
-            title=title,
-            scheduled_for=request.scheduled_for,
-            # recurrence=request.recurrence,
-        )
-
-        if existing is not None:
-            return existing
-
+        # Convert user's local datetime to UTC before storing/checking duplicates
         scheduled_for = normalize_to_utc(
             request.scheduled_for,
             request.timezone,
         )
 
+        existing = self.repository.get_duplicate(
+            owner_id=owner_id,
+            title=title,
+            scheduled_for=scheduled_for,
+        )
+
+        if existing is not None:
+            return existing
+
         reminder = Reminder(
             owner_id=owner_id,
             title=title,
             description=request.description,
-            scheduled_for=request.scheduled_for,
+            scheduled_for=scheduled_for,
+            timezone=request.timezone,
             recurrence=request.recurrence,
             status=request.status,
         )
-
         return self.repository.create(reminder)
 
     def list_reminders(
@@ -73,10 +73,7 @@ class ReminderService:
         reminder_id: str,
         request: ReminderUpdate,
     ) -> Reminder | None:
-
-        reminder = self.repository.get_by_id(
-            reminder_id
-        )
+        reminder = self.repository.get_by_id(reminder_id)
 
         if reminder is None:
             return None
@@ -87,10 +84,13 @@ class ReminderService:
         if request.description is not None:
             reminder.description = request.description
 
+        if request.timezone is not None:
+            reminder.timezone = request.timezone
+
         if request.scheduled_for is not None:
             reminder.scheduled_for = normalize_to_utc(
                 request.scheduled_for,
-                request.timezone or "Asia/Kolkata",
+                reminder.timezone,
             )
 
         if request.recurrence is not None:

@@ -48,6 +48,12 @@ class Reminder(Base):
         index=True,
     )
 
+    timezone: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        default="Asia/Kolkata",
+    )
+
     status: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
@@ -77,11 +83,6 @@ class Reminder(Base):
 
     last_attempt_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
-        nullable=True,
-    )
-
-    last_error: Mapped[str | None] = mapped_column(
-        Text,
         nullable=True,
     )
 

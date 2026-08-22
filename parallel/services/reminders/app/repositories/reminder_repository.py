@@ -95,6 +95,7 @@ class ReminderRepository:
                 processing_started_at=now,
             )
             .returning(Reminder)
+            
         )
 
         reminder = self.db.execute(statement).scalar_one_or_none()
