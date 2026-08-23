@@ -185,6 +185,74 @@ def test_high_goal_takes_fast_path_and_skips_llm_stages() -> None:
     assert decision.reminder_scheduled_for is None
 
 
+def test_medium_reminder_requests_confirmation() -> None:
+    executor = RecordingExecutor()
+
+    app.dependency_overrides[get_context_service] = lambda: FakeContextService()
+    app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    # A MEDIUM proposal must skip both execution and every LLM stage.
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={"message": "remind me to submit report"},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["type"] == "needs_confirmation"
+    assert body["tier"] == "rules"
+
+    pending = body["pending_action"]
+    assert pending["action"] == "create_reminder"
+    assert pending["slots"]["title"] == "submit report"
+    assert "when" in body["prompt"].lower()
+
+    # Nothing was executed -- we asked first.
+    assert executor.decisions == []
+
+
+def test_ambiguous_recurring_requests_clarification() -> None:
+    executor = RecordingExecutor()
+
+    app.dependency_overrides[get_context_service] = lambda: FakeContextService()
+    app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    # A LOW proposal must skip both execution and every LLM stage.
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={"message": "i want to meditate every day"},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["type"] == "needs_clarification"
+    assert body["tier"] == "rules"
+
+    pending = body["pending_action"]
+    assert pending["action"] == "none"
+    assert pending["slots"]["activity"] == "meditate"
+    assert pending["slots"]["schedule"] == "daily"
+    assert "habit" in body["prompt"].lower()
+    assert "reminder" in body["prompt"].lower()
+
+    # Nothing was executed -- we asked which category first.
+    assert executor.decisions == []
+
+
 def test_non_reminder_falls_through_to_decision_engine() -> None:
     executor = RecordingExecutor()
     engine = RecordingDecisionEngine()
@@ -208,3 +276,152 @@ def test_non_reminder_falls_through_to_decision_engine() -> None:
     body = response.json()
     assert body["tier"] == "llm"
     assert engine.called is True
+
+
+def test_confirmation_answer_executes_deterministically() -> None:
+    executor = RecordingExecutor()
+
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    # The answer turn is model-free: the context service, extractor, and every
+    # LLM stage must be untouched. RaiseIfCalled raises on any attribute access.
+    app.dependency_overrides[get_context_service] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={
+                "message": "tomorrow at 5pm",
+                "pending_action": {
+                    "action": "create_reminder",
+                    "source": "rules",
+                    "confidence": 0.5,
+                    "slots": {"title": "submit report"},
+                },
+            },
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tier"] == "rules"
+    assert body["type"] == "new_intent"
+
+    assert len(executor.decisions) == 1
+    decision = executor.decisions[0]
+    assert decision.action == "create_reminder"
+    assert decision.reminder_title == "submit report"
+    assert decision.reminder_scheduled_for is not None
+
+
+def test_ambiguous_confirmation_answer_re_confirms() -> None:
+    executor = RecordingExecutor()
+
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    app.dependency_overrides[get_context_service] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={
+                "message": "at 8",  # no am/pm -> still unresolved
+                "pending_action": {
+                    "action": "create_reminder",
+                    "source": "rules",
+                    "confidence": 0.5,
+                    "slots": {"title": "stretch"},
+                },
+            },
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["type"] == "needs_confirmation"
+    assert body["pending_action"]["slots"]["title"] == "stretch"
+    assert executor.decisions == []
+
+
+_CLARIFY_PENDING = {
+    "action": "none",
+    "source": "rules",
+    "confidence": 0.3,
+    "slots": {
+        "activity": "meditate",
+        "schedule": "daily",
+        "candidates": ["create_habit", "create_reminder"],
+    },
+}
+
+
+def test_clarification_answer_habit_executes_deterministically() -> None:
+    executor = RecordingExecutor()
+
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    # Model-free: the context service, extractor, and every LLM stage untouched.
+    app.dependency_overrides[get_context_service] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={"message": "make it a habit", "pending_action": _CLARIFY_PENDING},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tier"] == "rules"
+    assert body["type"] == "new_intent"
+
+    assert len(executor.decisions) == 1
+    decision = executor.decisions[0]
+    assert decision.action == "create_habit"
+    assert decision.habit_name == "meditate"
+    assert decision.habit_schedule == "daily"
+
+
+def test_clarification_answer_reminder_chains_to_confirmation() -> None:
+    executor = RecordingExecutor()
+
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    app.dependency_overrides[get_context_service] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={"message": "a reminder please", "pending_action": _CLARIFY_PENDING},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    # Picking "reminder" still needs a time -> hand off to the confirm loop.
+    assert body["type"] == "needs_confirmation"
+    assert body["tier"] == "rules"
+
+    pending = body["pending_action"]
+    assert pending["action"] == "create_reminder"
+    assert pending["slots"]["title"] == "meditate"
+    assert pending["slots"]["recurrence"] == "daily"
+    assert "when" in body["prompt"].lower()
+
+    assert executor.decisions == []

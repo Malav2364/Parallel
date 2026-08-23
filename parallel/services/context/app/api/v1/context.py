@@ -10,12 +10,15 @@ from app.api.deps import (
     get_projects_client,
 )
 from app.clients.projects_client import ProjectsClient
+from app.nlu.confirmation import clarification_prompt, confirmation_prompt
 from app.nlu.mapping import to_decision
-from app.nlu.rules import propose
+from app.nlu.rules import merge_answer, propose
+from app.nlu.schemas import ProposedAction
 from app.schemas import (
     ContextAnalyzeRequest,
     ContextDecision,
     ContextExtractRequest,
+    ContextProcessRequest,
     ContextResponse,
     ContextUpdate,
     ProjectResolution,
@@ -128,7 +131,7 @@ async def resolve_project(
 
 @router.post("/process")
 async def process_context(
-    request: ContextAnalyzeRequest,
+    request: ContextProcessRequest,
     x_user_id: str = Header(...),
     context_service: ContextService = Depends(
         get_context_service,
@@ -152,6 +155,70 @@ async def process_context(
         get_projects_client,
     ),
 ):
+    if request.pending_action is not None:
+        # Answering a prior needs_confirmation: fill the missing slot from the
+        # reply and execute deterministically. This is a terse slot answer, not
+        # a fresh utterance, so the LLM context extractor is intentionally
+        # skipped -- the whole confirmation loop stays model-free.
+        merged = merge_answer(
+            ProposedAction.model_validate(request.pending_action),
+            request.message,
+        )
+
+        if merged.is_executable:
+            decision = to_decision(merged)
+            execution = await executor.execute(
+                user_id=x_user_id,
+                decision=decision,
+            )
+            return {
+                "type": "new_intent" if execution.get("executed") else "context_only",
+                "extraction": None,
+                "context_update": None,
+                "resolution": None,
+                "resolution_error": None,
+                "activity": None,
+                "activity_project": None,
+                "decision": decision,
+                "execution": execution,
+                "tier": "rules",
+                "pending_action": None,
+                "prompt": None,
+            }
+
+        # Still incomplete. A MEDIUM proposal needs one more slot (ask for it);
+        # a LOW one is still category-ambiguous (ask the user to pick again).
+        if merged.band == "medium":
+            return {
+                "type": "needs_confirmation",
+                "extraction": None,
+                "context_update": None,
+                "resolution": None,
+                "resolution_error": None,
+                "activity": None,
+                "activity_project": None,
+                "decision": None,
+                "execution": None,
+                "tier": "rules",
+                "pending_action": merged,
+                "prompt": confirmation_prompt(merged),
+            }
+
+        return {
+            "type": "needs_clarification",
+            "extraction": None,
+            "context_update": None,
+            "resolution": None,
+            "resolution_error": None,
+            "activity": None,
+            "activity_project": None,
+            "decision": None,
+            "execution": None,
+            "tier": "rules",
+            "pending_action": merged,
+            "prompt": clarification_prompt(merged),
+        }
+
     context = context_service.get_context(
         x_user_id,
     )
@@ -181,6 +248,47 @@ async def process_context(
         activity = None
         activity_project = None
         tier = "rules"
+
+    elif proposal is not None and proposal.band == "medium":
+        # Tier-1 recognised the intent but a required slot is missing. Ask for
+        # it (never silently wrong) instead of guessing or falling to the LLM.
+        # The context extractor above still ran, so a co-occurring context
+        # update is not lost. The prefilled slots ride back on pending_action
+        # so the client can echo them with the user's answer next turn.
+        return {
+            "type": "needs_confirmation",
+            "extraction": extraction,
+            "context_update": context_update.context,
+            "resolution": None,
+            "resolution_error": None,
+            "activity": None,
+            "activity_project": None,
+            "decision": None,
+            "execution": None,
+            "tier": "rules",
+            "pending_action": proposal,
+            "prompt": confirmation_prompt(proposal),
+        }
+
+    elif proposal is not None:
+        # Tier-1 sees an actionable intent but can't tell which category it is
+        # (a recurring activity that could be a habit or a recurring reminder).
+        # Ask the user to pick rather than escalating to the LLM to guess. The
+        # candidates ride back on pending_action for the answer turn.
+        return {
+            "type": "needs_clarification",
+            "extraction": extraction,
+            "context_update": context_update.context,
+            "resolution": None,
+            "resolution_error": None,
+            "activity": None,
+            "activity_project": None,
+            "decision": None,
+            "execution": None,
+            "tier": "rules",
+            "pending_action": proposal,
+            "prompt": clarification_prompt(proposal),
+        }
 
     else:
         resolution = await resolver.resolve(
@@ -255,6 +363,8 @@ async def process_context(
         "decision": decision,
         "execution": execution,
         "tier": tier,
+        "pending_action": None,
+        "prompt": None,
     }
 
 

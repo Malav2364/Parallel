@@ -21,6 +21,13 @@ class ContextAnalyzeRequest(BaseModel):
     message: str = Field(min_length=1)
 
 
+class ContextProcessRequest(ContextAnalyzeRequest):
+    # Echoed-back pending action from a prior needs_confirmation response. Kept
+    # as a plain dict (not ProposedAction) to avoid an app.schemas <-> app.nlu
+    # import cycle; /process validates it into a ProposedAction.
+    pending_action: dict[str, Any] | None = None
+
+
 class ContextResponse(BaseModel):
     user_id: str
     context: dict[str, Any]

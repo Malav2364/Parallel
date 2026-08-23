@@ -1,6 +1,7 @@
 from .context import (
     ContextAnalyzeRequest,
     ContextExtractRequest,
+    ContextProcessRequest,
     ContextResponse,
     ContextUpdate,
 )
@@ -9,6 +10,7 @@ from .project_resolution import ProjectResolution
 
 __all__ = [
     "ContextAnalyzeRequest",
+    "ContextProcessRequest",
     "ContextDecision",
     "ContextSignal",
     "ContextExtractRequest",

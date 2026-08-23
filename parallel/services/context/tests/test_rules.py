@@ -178,7 +178,36 @@ def test_goal_deadline_populates_target_date() -> None:
         "create a project for the website redesign",
         "i want to lose weight",
         "how is my week looking",
+        # Recurring but no explicit intent -- a passive statement, not a request.
+        "i feel tired every day",
+        # Recurring + actionable but no intent prefix -- left for the LLM.
+        "meditate every day",
     ],
 )
 def test_non_reminder_is_declined(text: str) -> None:
     assert propose(text, now=NOW) is None
+
+
+@pytest.mark.parametrize(
+    "text, activity, schedule",
+    [
+        ("i want to meditate every day", "meditate", "daily"),
+        ("let me journal every week", "journal", "weekly"),
+        ("i need to stretch daily", "stretch", "daily"),
+    ],
+)
+def test_ambiguous_recurring_activity_requests_clarification(
+    text: str, activity: str, schedule: str
+) -> None:
+    # Recurring + an explicit intent but no category word: the rules can't tell
+    # a habit from a recurring reminder, so they emit a LOW proposal to clarify
+    # rather than guessing or burning an LLM call.
+    proposal = propose(text, now=NOW)
+
+    assert proposal is not None
+    assert proposal.action == "none"
+    assert proposal.band == "low"
+    assert not proposal.is_executable
+    assert proposal.slots["activity"] == activity
+    assert proposal.slots["schedule"] == schedule
+    assert proposal.slots["candidates"] == ["create_habit", "create_reminder"]
