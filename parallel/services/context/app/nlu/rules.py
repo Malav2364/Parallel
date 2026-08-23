@@ -264,12 +264,181 @@ def propose_goal(text, now=None) -> ProposedAction | None:
     )
 
 
+# An explicit intent to *do* something ("i want to ...", "start ...", "let me
+# ...") without naming a category. Required so a passive mood statement ("i feel
+# tired every day") never triggers a clarification -- only an actionable one does.
+_INTENT_PREFIX = re.compile(
+    r"^\s*(?:please\s+)?"
+    r"(?:i\s+want\s+to|i'?d\s+like\s+to|i\s+wanna|i\s+need\s+to|"
+    r"i\s+should|i\s+have\s+to|i\s+gotta|i\s+plan\s+to|i\s+intend\s+to|"
+    r"i'?m\s+going\s+to|i\s+will|i'?m\s+trying\s+to|trying\s+to|"
+    r"let\s+me|start|begin)\s+",
+    re.IGNORECASE,
+)
+
+
+def propose_clarification(text, now=None) -> ProposedAction | None:
+    """Propose a LOW clarification when the intent is actionable but its
+    category is ambiguous: a recurring activity stated with an explicit intent
+    but no reminder/habit/goal marker ("i want to meditate every day" -- a habit
+    or a recurring reminder?). Runs last, so the specific proposers claim their
+    own cases first. Declines (``None``) unless a recurrence resolves AND an
+    intent prefix is present AND an activity is recovered, so the LLM still
+    handles genuinely open-ended input rather than being nagged for a category.
+    """
+
+    recurrence = detect_recurrence(text)
+    if not recurrence:
+        return None
+
+    match = _INTENT_PREFIX.match(text)
+    if match is None:
+        return None
+
+    subject, _ = split_time(text[match.end() :])
+    activity = _clean_title(subject)
+    if not activity:
+        return None
+
+    return ProposedAction(
+        action="none",
+        source="rules",
+        confidence=0.3,
+        slots={
+            "activity": activity,
+            "schedule": recurrence,
+            "candidates": ["create_habit", "create_reminder"],
+        },
+        reason="ambiguous: recurring activity, category unclear",
+    )
+
+
 def propose(text, now=None) -> ProposedAction | None:
     """Run the deterministic rules, returning the first confident match."""
 
-    for proposer in (propose_reminder, propose_habit, propose_goal):
+    for proposer in (
+        propose_reminder,
+        propose_habit,
+        propose_goal,
+        propose_clarification,
+    ):
         proposal = proposer(text, now=now)
         if proposal is not None:
             return proposal
 
     return None
+
+
+_HABIT_CHOICE = re.compile(r"\b(?:habit|routine|track|build)\b", re.IGNORECASE)
+_REMINDER_CHOICE = re.compile(
+    r"\b(?:remind(?:er)?|remember|ping|alert|notif\w*)\b",
+    re.IGNORECASE,
+)
+
+
+def _classify_choice(answer: str) -> str | None:
+    """Read a habit-vs-reminder pick from a clarification answer, or ``None``."""
+
+    is_habit = bool(_HABIT_CHOICE.search(answer))
+    is_reminder = bool(_REMINDER_CHOICE.search(answer))
+    if is_habit and not is_reminder:
+        return "create_habit"
+    if is_reminder and not is_habit:
+        return "create_reminder"
+    return None
+
+
+def _resolve_clarification(pending: ProposedAction, answer: str) -> ProposedAction:
+    """Turn a habit-vs-reminder pick into a concrete proposal, re-graded.
+
+    Choosing "habit" completes it (HIGH -> execute). Choosing "reminder" still
+    needs a first-fire time, so it comes back MEDIUM to run the normal
+    confirmation loop. An answer that names neither stays the LOW proposal so
+    the caller asks again rather than guessing.
+    """
+
+    activity = (pending.slots.get("activity") or "").strip()
+    schedule = pending.slots.get("schedule")
+    choice = _classify_choice(answer)
+
+    if choice == "create_habit":
+        return ProposedAction(
+            action="create_habit",
+            source="rules",
+            confidence=0.9,
+            slots={"title": activity, "schedule": schedule},
+            reason="clarified: habit",
+        )
+
+    if choice == "create_reminder":
+        return ProposedAction(
+            action="create_reminder",
+            source="rules",
+            confidence=MEDIUM_CONFIDENCE,
+            slots={"title": activity, "recurrence": schedule},
+            reason="reminder intent, missing time",
+        )
+
+    return pending
+
+
+def merge_answer(pending: ProposedAction, answer: str, now=None) -> ProposedAction:
+    """Fill a pending proposal's missing slot from a free-text answer.
+
+    Given a MEDIUM proposal awaiting confirmation and the user's reply, resolve
+    the one piece that was missing (a time, a schedule, or the subject) using
+    the same offline grammar the proposers use, then re-grade confidence. If the
+    proposal is now complete it comes back HIGH (ready to execute); otherwise it
+    stays MEDIUM so the caller can ask again. Deterministic -- no model call.
+    """
+
+    slots = dict(pending.slots)
+    title = (slots.get("title") or "").strip()
+
+    if pending.action == "none" and "candidates" in slots:
+        # A clarification answer picks a category; hand off to build the
+        # concrete proposal (which then re-runs this gate on later turns).
+        return _resolve_clarification(pending, answer)
+
+    if pending.action == "create_reminder":
+        if not slots.get("scheduled_for"):
+            parsed = parse_schedule(answer, now=now)
+            if parsed is not None:
+                slots["scheduled_for"] = parsed.scheduled_for.isoformat()
+                # Keep a recurrence resolved on an earlier turn; only a fresh
+                # recurrence named in the answer should replace it.
+                if parsed.recurrence is not None or "recurrence" not in slots:
+                    slots["recurrence"] = parsed.recurrence
+        elif not title:
+            slots["title"] = _clean_title(answer)
+        ready = bool(slots.get("title") and slots.get("scheduled_for"))
+        confidence = 0.9 if ready else MEDIUM_CONFIDENCE
+
+    elif pending.action == "create_habit":
+        if not slots.get("schedule"):
+            recurrence = detect_recurrence(answer)
+            if recurrence:
+                slots["schedule"] = recurrence
+        elif not title:
+            slots["title"] = _clean_title(answer)
+        ready = bool(slots.get("title") and slots.get("schedule"))
+        confidence = 0.9 if ready else MEDIUM_CONFIDENCE
+
+    else:  # create_goal
+        if not title:
+            slots["title"] = _clean_title(answer)
+        ready = bool(slots.get("title"))
+        confidence = 0.88 if ready else MEDIUM_CONFIDENCE
+
+    if confidence == MEDIUM_CONFIDENCE:
+        reason = pending.reason
+    else:
+        reason = f"{pending.action} confirmed"
+
+    return ProposedAction(
+        action=pending.action,
+        source="rules",
+        confidence=confidence,
+        slots=slots,
+        reason=reason,
+    )
