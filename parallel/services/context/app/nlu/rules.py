@@ -114,7 +114,162 @@ def propose_reminder(text, now=None) -> ProposedAction | None:
     )
 
 
+# Habit intent must be explicit: the literal word "habit"/"routine".
+_HABIT_TRIGGER = re.compile(r"\b(?:habit|routine)\b", re.IGNORECASE)
+
+# The activity is what follows "habit/routine of|to ..." ("habit of reading").
+_HABIT_OF = re.compile(r"\b(?:habit|routine)\s+(?:of|to)\s+(.+)$", re.IGNORECASE)
+
+# An optional, best-effort daypart/clock window. Never gates high confidence.
+_TIME_WINDOW = re.compile(
+    r"\b(morning|afternoon|evening|night|noon|midnight"
+    r"|\d{1,2}(?::\d{2})?\s*(?:am|pm)|\d{1,2}:\d{2})\b",
+    re.IGNORECASE,
+)
+
+
+def propose_habit(text, now=None) -> ProposedAction | None:
+    """Propose a ``create_habit`` action, or ``None`` if not a habit.
+
+    Deliberately conservative: high confidence requires the explicit word
+    "habit"/"routine" AND a recognised recurrence AND a recovered activity.
+    Intention+recurrence without the word (e.g. "meditate every day", which
+    could equally be a recurring reminder) is left for a later tier.
+    """
+
+    if not _HABIT_TRIGGER.search(text):
+        return None
+
+    recurrence = detect_recurrence(text)
+    match = _HABIT_OF.search(text)
+    if match:
+        subject, _ = split_time(match.group(1))
+        name = _clean_title(subject)
+    else:
+        name = ""
+
+    window = _TIME_WINDOW.search(text)
+    time_window = window.group(1) if window else None
+
+    # High confidence needs the explicit word (checked above), a name, and a
+    # schedule -- everything the executor requires to create the habit.
+    if name and recurrence:
+        slots: dict = {"title": name, "schedule": recurrence}
+        if time_window:
+            slots["time_window"] = time_window
+        return ProposedAction(
+            action="create_habit",
+            source="rules",
+            confidence=0.9,
+            slots=slots,
+            reason="rule:habit",
+        )
+
+    # Habit intent is clear but the schedule or the activity is missing:
+    # defer at medium so a later tier can confirm rather than invent it.
+    # Whatever we did resolve is carried through to prefill the confirmation.
+    slots = {"title": name}
+    if recurrence:
+        slots["schedule"] = recurrence
+    if time_window:
+        slots["time_window"] = time_window
+    if name:
+        missing = "schedule"
+    else:
+        missing = "activity" if recurrence else "activity and schedule"
+
+    return ProposedAction(
+        action="create_habit",
+        source="rules",
+        confidence=MEDIUM_CONFIDENCE,
+        slots=slots,
+        reason=f"habit intent, missing {missing}",
+    )
+
+
+# Goal intent must be explicit; plain "I want to X" is deliberately NOT a
+# trigger (too broad -- it captures reminders, habits, and idle musings alike).
+_GOAL_TRIGGER = re.compile(
+    r"\b(?:my\s+goal|(?:set|make|create)\s+(?:a|the|my)?\s*goal"
+    r"|i\s+want\s+to\s+(?:achieve|accomplish|reach)"
+    r"|i\s+aim\s+to|i'?m\s+aiming\s+to|my\s+aim\s+is"
+    r"|i\s+aspire\s+to|my\s+objective|my\s+target\s+is"
+    r"|i'?m\s+working\s+towards?|goal\s+is|goal\s*:)",
+    re.IGNORECASE,
+)
+
+# Leading goal framing removed to recover the objective itself.
+_GOAL_PREFIX = re.compile(
+    r"^\s*(?:please\s+)?"
+    r"(?:my\s+goal\s+is(?:\s+to|\s*:)?|my\s+goal\s*:?"
+    r"|(?:set|make|create)\s+(?:a|the|my)?\s*goal\s+(?:to|of|:)?"
+    r"|i\s+want\s+to\s+(?:achieve|accomplish|reach)"
+    r"|i\s+aim\s+to|i'?m\s+aiming\s+to|my\s+aim\s+is(?:\s+to|\s*:)?"
+    r"|i\s+aspire\s+to|my\s+objective\s+is(?:\s+to|\s*:)?|my\s+objective\s*:?"
+    r"|my\s+target\s+is(?:\s+to|\s*:)?|i'?m\s+working\s+towards?"
+    r"|goal\s+is(?:\s+to|\s*:)?|goal\s*:)\s*",
+    re.IGNORECASE,
+)
+
+# A trailing deadline clause ("by december") -> an optional target_date.
+_DEADLINE = re.compile(
+    r"\b(?:by|before|until|due(?:\s+by)?)\s+(.+)$",
+    re.IGNORECASE,
+)
+
+
+def propose_goal(text, now=None) -> ProposedAction | None:
+    """Propose a ``create_goal`` action, or ``None`` if not a goal.
+
+    Conservative by design: only the explicit goal markers above qualify, so
+    a bare "I want to X" is left for a later tier rather than auto-created.
+    """
+
+    if not _GOAL_TRIGGER.search(text):
+        return None
+
+    body = _GOAL_PREFIX.sub("", text, count=1).strip()
+
+    # Peel a "by <date>" clause only when it actually parses to a date;
+    # otherwise keep the words in the objective (never silently drop them).
+    target_date = None
+    deadline = _DEADLINE.search(body)
+    if deadline:
+        parsed = parse_schedule(deadline.group(1), now=now)
+        if parsed is not None:
+            target_date = parsed.scheduled_for.date().isoformat()
+            body = body[: deadline.start()].strip()
+
+    name = _clean_title(body)
+
+    if name:
+        slots: dict = {"title": name}
+        if target_date:
+            slots["target_date"] = target_date
+        return ProposedAction(
+            action="create_goal",
+            source="rules",
+            confidence=0.88,
+            slots=slots,
+            reason="rule:goal",
+        )
+
+    # Goal intent is clear but no objective could be recovered: defer.
+    return ProposedAction(
+        action="create_goal",
+        source="rules",
+        confidence=MEDIUM_CONFIDENCE,
+        slots={"title": name},
+        reason="goal intent, missing objective",
+    )
+
+
 def propose(text, now=None) -> ProposedAction | None:
     """Run the deterministic rules, returning the first confident match."""
 
-    return propose_reminder(text, now=now)
+    for proposer in (propose_reminder, propose_habit, propose_goal):
+        proposal = proposer(text, now=now)
+        if proposal is not None:
+            return proposal
+
+    return None

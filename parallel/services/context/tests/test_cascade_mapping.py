@@ -48,3 +48,48 @@ def test_missing_optional_slots_default_to_none() -> None:
     assert decision.reminder_recurrence is None
     # reason falls back when the proposal carries none.
     assert decision.reason == "tier-1 rule"
+
+
+def test_habit_proposal_maps_to_decision() -> None:
+    proposal = ProposedAction(
+        action="create_habit",
+        source="rules",
+        confidence=0.9,
+        slots={
+            "title": "Meditate",
+            "schedule": "daily",
+            "time_window": "morning",
+        },
+        reason="rule:habit",
+    )
+
+    decision = to_decision(proposal)
+
+    assert decision.action == "create_habit"
+    assert decision.habit_name == "Meditate"
+    assert decision.habit_schedule == "daily"
+    assert decision.habit_time_window == "morning"
+    assert decision.habit_status == "active"
+    assert decision.reason == "rule:habit"
+    # reminder fields stay unset for a habit proposal.
+    assert decision.reminder_title is None
+
+
+def test_goal_proposal_maps_to_decision() -> None:
+    proposal = ProposedAction(
+        action="create_goal",
+        source="rules",
+        confidence=0.88,
+        slots={"title": "Lose weight", "target_date": "2026-12-01"},
+        reason="rule:goal",
+    )
+
+    decision = to_decision(proposal)
+
+    assert decision.action == "create_goal"
+    assert decision.goal_name == "Lose weight"
+    assert decision.goal_target_date == "2026-12-01"
+    assert decision.goal_status == "active"
+    assert decision.reason == "rule:goal"
+    # reminder fields stay unset for a goal proposal.
+    assert decision.reminder_title is None

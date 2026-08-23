@@ -123,6 +123,68 @@ def test_high_reminder_takes_fast_path_and_skips_llm_stages() -> None:
     assert decision.reminder_scheduled_for is not None
 
 
+def test_high_habit_takes_fast_path_and_skips_llm_stages() -> None:
+    executor = RecordingExecutor()
+
+    app.dependency_overrides[get_context_service] = lambda: FakeContextService()
+    app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    # The three LLM stages the fast path must skip: raise if touched.
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={"message": "start a habit of meditating every day"},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tier"] == "rules"
+    assert body["resolution"] is None
+
+    assert len(executor.decisions) == 1
+    decision = executor.decisions[0]
+    assert decision.action == "create_habit"
+    assert decision.habit_schedule == "daily"
+    assert decision.reminder_scheduled_for is None
+
+
+def test_high_goal_takes_fast_path_and_skips_llm_stages() -> None:
+    executor = RecordingExecutor()
+
+    app.dependency_overrides[get_context_service] = lambda: FakeContextService()
+    app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    # The three LLM stages the fast path must skip: raise if touched.
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={"message": "my goal is to lose weight"},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tier"] == "rules"
+    assert body["resolution"] is None
+
+    assert len(executor.decisions) == 1
+    decision = executor.decisions[0]
+    assert decision.action == "create_goal"
+    assert decision.goal_name == "lose weight"
+    assert decision.reminder_scheduled_for is None
+
+
 def test_non_reminder_falls_through_to_decision_engine() -> None:
     executor = RecordingExecutor()
     engine = RecordingDecisionEngine()
