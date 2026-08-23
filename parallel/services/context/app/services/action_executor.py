@@ -1,9 +1,12 @@
+import httpx
+
 from app.clients.goals_client import GoalsClient
 from app.clients.projects_client import ProjectsClient
 from app.clients.workspace_client import WorkspaceClient
 from app.schemas.decision import ContextDecision
 from app.clients.habits_client import HabitsClient
 from app.clients.reminders_client import RemindersClient
+from app.services.idempotency import build_key
 from app.services.reminder_datetime import ReminderDateTimeResolver
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -24,7 +27,7 @@ class ActionExecutor:
         self.habits_client = habits_client
         self.reminders_client = reminders_client
 
-    def execute(
+    async def execute(
         self,
         user_id: str,
         decision: ContextDecision,
@@ -36,25 +39,25 @@ class ActionExecutor:
             }
 
         if decision.action == "create_project":
-            return self._create_project(
+            return await self._create_project(
                 user_id=user_id,
                 decision=decision,
             )
 
         if decision.action == "create_goal":
-            return self._create_goal(
+            return await self._create_goal(
                 user_id=user_id,
                 decision=decision,
             )
         
         if decision.action == "create_habit":
-            return self._create_habit(
+            return await self._create_habit(
                 user_id=user_id,
                 decision=decision,
             )
 
         if decision.action == "create_reminder":
-            return self._create_reminder(
+            return await self._create_reminder(
                 user_id=user_id,
                 decision=decision,
             )
@@ -65,7 +68,7 @@ class ActionExecutor:
             "reason": "Action is not implemented yet.",
         }
 
-    def _create_goal(
+    async def _create_goal(
         self,
         user_id: str,
         decision: ContextDecision,
@@ -93,30 +96,62 @@ class ActionExecutor:
                 "reason": "Goal name was not provided.",
             }
 
-        goal = self.goals_client.get_by_name(
-            user_id=user_id,
-            name=goal_name,
-        )
-        goal_created = False
+        idempotency_key = build_key(user_id, "create_goal", goal_name)
 
-        if goal is None:
-            goal = self.goals_client.create_goal(
+        try:
+            existing = await self.goals_client.get_by_name(
+                user_id=user_id,
+                name=goal_name,
+            )
+
+            if existing is not None:
+                return {
+                    "executed": False,
+                    "action": "create_goal",
+                    "reason": "Goal already exists.",
+                    "goal": existing,
+                    "goal_created": False,
+                    "idempotency_key": idempotency_key,
+                }
+
+            goal = await self.goals_client.create_goal(
                 user_id=user_id,
                 name=goal_name,
                 description=decision.goal_description,
                 status=decision.goal_status or "active",
                 target_date=decision.goal_target_date,
+                idempotency_key=idempotency_key,
             )
-            goal_created = True
+
+        except httpx.HTTPError as exc:
+            return {
+                "executed": False,
+                "action": "create_goal",
+                "reason": f"Goals service request failed: {exc}",
+                "idempotency_key": idempotency_key,
+            }
+
+        # Read-back: confirm the goal is findable by the same natural key we
+        # dedup on before reporting success, rather than trusting the create
+        # response alone.
+        try:
+            verified = await self.goals_client.get_by_name(
+                user_id=user_id,
+                name=goal_name,
+            )
+        except httpx.HTTPError:
+            verified = None
 
         return {
-            "executed": goal_created,
+            "executed": True,
             "action": "create_goal",
-            "goal": goal,
-            "goal_created": goal_created,
+            "goal": verified or goal,
+            "goal_created": True,
+            "verified": verified is not None,
+            "idempotency_key": idempotency_key,
         }
 
-    def _create_habit(
+    async def _create_habit(
         self,
         user_id: str,
         decision: ContextDecision,
@@ -142,37 +177,63 @@ class ActionExecutor:
                 "reason": "Habit schedule was not provided.",
             }
 
-        existing = self.habits_client.get_by_name(
-            user_id=user_id,
-            name=decision.habit_name,
-        )
+        idempotency_key = build_key(user_id, "create_habit", decision.habit_name)
 
-        if existing is not None:
+        try:
+            existing = await self.habits_client.get_by_name(
+                user_id=user_id,
+                name=decision.habit_name,
+            )
+
+            if existing is not None:
+                return {
+                    "executed": False,
+                    "action": "create_habit",
+                    "reason": "Habit already exists.",
+                    "habit": existing,
+                    "habit_created": False,
+                    "idempotency_key": idempotency_key,
+                }
+
+            habit = await self.habits_client.create_habit(
+                user_id=user_id,
+                name=decision.habit_name,
+                schedule=decision.habit_schedule,
+                description=decision.habit_description,
+                time_window=decision.habit_time_window,
+                status=decision.habit_status or "active",
+                idempotency_key=idempotency_key,
+            )
+
+        except httpx.HTTPError as exc:
             return {
                 "executed": False,
                 "action": "create_habit",
-                "reason": "Habit already exists.",
-                "habit": existing,
-                "habit_created": False,
+                "reason": f"Habits service request failed: {exc}",
+                "idempotency_key": idempotency_key,
             }
 
-        habit = self.habits_client.create_habit(
-            user_id=user_id,
-            name=decision.habit_name,
-            schedule=decision.habit_schedule,
-            description=decision.habit_description,
-            time_window=decision.habit_time_window,
-            status=decision.habit_status or "active",
-        )
+        # Read-back: confirm the habit is findable by the same natural key we
+        # dedup on before reporting success, rather than trusting the create
+        # response alone.
+        try:
+            verified = await self.habits_client.get_by_name(
+                user_id=user_id,
+                name=decision.habit_name,
+            )
+        except httpx.HTTPError:
+            verified = None
 
         return {
             "executed": True,
             "action": "create_habit",
-            "habit": habit,
+            "habit": verified or habit,
             "habit_created": True,
+            "verified": verified is not None,
+            "idempotency_key": idempotency_key,
         }
 
-    def _create_reminder(
+    async def _create_reminder(
         self,
         user_id: str,
         decision: ContextDecision,
@@ -232,39 +293,80 @@ class ActionExecutor:
                 ),
             }
 
-        existing = self.reminders_client.get_by_details(
-            user_id=user_id,
-            title=decision.reminder_title,
-            scheduled_for=scheduled_for.isoformat(),
+        idempotency_key = build_key(
+            user_id,
+            "create_reminder",
+            decision.reminder_title,
+            scheduled_for.isoformat(),
         )
 
-        if existing is not None:
+        try:
+            existing = await self.reminders_client.get_by_details(
+                user_id=user_id,
+                title=decision.reminder_title,
+                scheduled_for=scheduled_for.isoformat(),
+            )
+
+            if existing is not None:
+                return {
+                    "executed": False,
+                    "action": "create_reminder",
+                    "reason": "Reminder already exists.",
+                    "reminder": existing,
+                    "reminder_created": False,
+                    "idempotency_key": idempotency_key,
+                }
+
+            reminder = await self.reminders_client.create_reminder(
+                user_id=user_id,
+                title=decision.reminder_title,
+                description=decision.reminder_description,
+                scheduled_for=scheduled_for.isoformat(),
+                recurrence=decision.reminder_recurrence,
+                status=decision.reminder_status or "pending",
+                idempotency_key=idempotency_key,
+            )
+
+        except httpx.HTTPError as exc:
             return {
                 "executed": False,
                 "action": "create_reminder",
-                "reason": "Reminder already exists.",
-                "reminder": existing,
-                "reminder_created": False,
+                "reason": f"Reminders service request failed: {exc}",
+                "idempotency_key": idempotency_key,
             }
 
-        reminder = self.reminders_client.create_reminder(
-            user_id=user_id,
-            title=decision.reminder_title,
-            description=decision.reminder_description,
-            scheduled_for=scheduled_for.isoformat(),
-            recurrence=decision.reminder_recurrence,
-            status=decision.reminder_status or "pending",
-        )
+        # Read-back: confirm the write is actually queryable before reporting
+        # success, rather than trusting the create response alone.
+        reminder_id = reminder.get("id") if isinstance(reminder, dict) else None
+
+        if not reminder_id:
+            return {
+                "executed": False,
+                "action": "create_reminder",
+                "reason": "Reminder create returned no id; not verified.",
+                "reminder": reminder,
+                "idempotency_key": idempotency_key,
+            }
+
+        try:
+            verified = await self.reminders_client.get_reminder(
+                user_id=user_id,
+                reminder_id=reminder_id,
+            )
+        except httpx.HTTPError:
+            verified = None
 
         return {
             "executed": True,
             "action": "create_reminder",
-            "reminder": reminder,
+            "reminder": verified or reminder,
             "reminder_created": True,
+            "verified": verified is not None,
             "scheduled_for": scheduled_for.isoformat(),
+            "idempotency_key": idempotency_key,
         }
 
-    def _create_project(
+    async def _create_project(
         self,
         user_id: str,
         decision: ContextDecision,
@@ -276,67 +378,98 @@ class ActionExecutor:
                 "reason": "Project name was not provided.",
             }
 
-        # --------------------------------------------------
-        # Project
-        # --------------------------------------------------
-
-        project = self.projects_client.get_by_name(
-            user_id=user_id,
-            name=decision.project_name,
+        idempotency_key = build_key(
+            user_id,
+            "create_project",
+            decision.project_name,
         )
 
-        project_created = False
-
-        if project is None:
-            project = self.projects_client.create_project(
-                user_id=user_id,
-                name=decision.project_name,
-                description=decision.project_description,
-            )
-            project_created = True
-
-        # --------------------------------------------------
-        # Space
-        # --------------------------------------------------
-
+        project = None
         space = None
+        association = None
+        project_created = False
         space_created = False
 
-        if decision.space_candidate:
-            space = self.workspace_client.get_by_name(
+        try:
+            # --------------------------------------------------
+            # Project
+            # --------------------------------------------------
+
+            project = await self.projects_client.get_by_name(
                 user_id=user_id,
-                name=decision.space_candidate,
+                name=decision.project_name,
             )
 
-            if space is None:
-                space = self.workspace_client.create_space(
+            if project is None:
+                project = await self.projects_client.create_project(
+                    user_id=user_id,
+                    name=decision.project_name,
+                    description=decision.project_description,
+                    idempotency_key=idempotency_key,
+                )
+                project_created = True
+
+            # --------------------------------------------------
+            # Space
+            # --------------------------------------------------
+
+            if decision.space_candidate:
+                space = await self.workspace_client.get_by_name(
                     user_id=user_id,
                     name=decision.space_candidate,
-                    description=decision.project_description,
-                    space_type="custom",
-                    visibility="private",
-                    source="ai",
                 )
-                space_created = True
 
-        # --------------------------------------------------
-        # Association
-        # --------------------------------------------------
+                if space is None:
+                    space = await self.workspace_client.create_space(
+                        user_id=user_id,
+                        name=decision.space_candidate,
+                        description=decision.project_description,
+                        space_type="custom",
+                        visibility="private",
+                        source="ai",
+                    )
+                    space_created = True
 
-        association = None
+            # --------------------------------------------------
+            # Association
+            # --------------------------------------------------
 
-        if space is not None:
-            association = self.workspace_client.associate_project(
-                space_id=space["id"],
-                project_id=project["id"],
+            if space is not None:
+                association = await self.workspace_client.associate_project(
+                    space_id=space["id"],
+                    project_id=project["id"],
+                )
+
+        except httpx.HTTPError as exc:
+            return {
+                "executed": project_created or space_created,
+                "action": "create_project",
+                "reason": f"Projects service request failed: {exc}",
+                "project": project,
+                "space": space,
+                "project_created": project_created,
+                "space_created": space_created,
+                "idempotency_key": idempotency_key,
+            }
+
+        # Read-back: confirm the project is findable by name before reporting
+        # success, rather than trusting the create response alone.
+        try:
+            verified = await self.projects_client.get_by_name(
+                user_id=user_id,
+                name=decision.project_name,
             )
+        except httpx.HTTPError:
+            verified = None
 
         return {
             "executed": project_created or space_created,
             "action": "create_project",
-            "project": project,
+            "project": verified or project,
             "space": space,
             "association": association,
             "project_created": project_created,
             "space_created": space_created,
+            "verified": verified is not None,
+            "idempotency_key": idempotency_key,
         }

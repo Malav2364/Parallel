@@ -113,19 +113,19 @@ def analyze_context(
 
 
 @router.post("/resolve-project", response_model=ProjectResolution)
-def resolve_project(
+async def resolve_project(
     request: ContextAnalyzeRequest,
     x_user_id: str = Header(...),
     resolver: ProjectResolver = Depends(get_project_resolver),
 ) -> ProjectResolution:
-    return resolver.resolve(
+    return await resolver.resolve(
         user_id=x_user_id,
         user_input=request.message,
     )
 
 
 @router.post("/process")
-def process_context(
+async def process_context(
     request: ContextAnalyzeRequest,
     x_user_id: str = Header(...),
     context_service: ContextService = Depends(
@@ -166,7 +166,7 @@ def process_context(
         updates=extraction.updates,
     )
 
-    resolution = resolver.resolve(
+    resolution = await resolver.resolve(
         user_id=x_user_id,
         user_input=request.message,
     )
@@ -176,7 +176,7 @@ def process_context(
     resolution_error = None
 
     if resolution.matched:
-        projects = projects_client.list_projects(
+        projects = await projects_client.list_projects(
             x_user_id,
         )
         project = _find_project_by_id(
@@ -196,7 +196,7 @@ def process_context(
                 activity.current_focus is not None
                 or activity.latest_activity is not None
             ):
-                activity_project = projects_client.update_activity(
+                activity_project = await projects_client.update_activity(
                     project_id=resolution.project_id,
                     current_focus=activity.current_focus,
                     latest_activity=activity.latest_activity,
@@ -209,7 +209,7 @@ def process_context(
         project_resolution=resolution,
     )
 
-    execution = executor.execute(
+    execution = await executor.execute(
         user_id=x_user_id,
         decision=decision,
     )
@@ -239,7 +239,7 @@ def process_context(
 @router.post(
     "/project-activity",
 )
-def extract_project_activity(
+async def extract_project_activity(
     request: ContextAnalyzeRequest,
     x_user_id: str = Header(...),
     resolver: ProjectResolver = Depends(
@@ -247,7 +247,7 @@ def extract_project_activity(
     ),
     extractor: ProjectActivityExtractor = Depends(get_project_activity_extractor),
 ):
-    resolution = resolver.resolve(
+    resolution = await resolver.resolve(
         user_id=x_user_id,
         user_input=request.message,
     )
@@ -258,7 +258,7 @@ def extract_project_activity(
             "activity": None,
         }
 
-    projects = resolver.projects_client.list_projects(
+    projects = await resolver.projects_client.list_projects(
         x_user_id,
     )
 

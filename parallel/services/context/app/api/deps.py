@@ -1,4 +1,5 @@
-from fastapi import Depends
+import httpx
+from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 from app.clients.habits_client import HabitsClient
 from app.clients.reminders_client import RemindersClient
@@ -39,21 +40,37 @@ def get_context_decision_engine() -> ContextDecisionEngine:
     return ContextDecisionEngine()
 
 
-def get_projects_client() -> ProjectsClient:
-    return ProjectsClient()
+def get_http_client(request: Request) -> httpx.AsyncClient:
+    # The pooled client created in the app lifespan; shared by all
+    # downstream service clients so connections are reused.
+    return request.app.state.http_client
 
 
-def get_goals_client() -> GoalsClient:
-    return GoalsClient()
+def get_projects_client(
+    client: httpx.AsyncClient = Depends(get_http_client),
+) -> ProjectsClient:
+    return ProjectsClient(client)
 
-def get_habits_client() -> HabitsClient:
-    return HabitsClient()
 
-def get_reminders_client() -> RemindersClient:
-    return RemindersClient()
+def get_goals_client(
+    client: httpx.AsyncClient = Depends(get_http_client),
+) -> GoalsClient:
+    return GoalsClient(client)
 
-def get_workspace_client() -> WorkspaceClient:
-    return WorkspaceClient()
+def get_habits_client(
+    client: httpx.AsyncClient = Depends(get_http_client),
+) -> HabitsClient:
+    return HabitsClient(client)
+
+def get_reminders_client(
+    client: httpx.AsyncClient = Depends(get_http_client),
+) -> RemindersClient:
+    return RemindersClient(client)
+
+def get_workspace_client(
+    client: httpx.AsyncClient = Depends(get_http_client),
+) -> WorkspaceClient:
+    return WorkspaceClient(client)
 
 
 def get_project_activity_extractor() -> ProjectActivityExtractor:
