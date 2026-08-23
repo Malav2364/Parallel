@@ -10,6 +10,7 @@ from app.api.deps import (
     get_projects_client,
 )
 from app.clients.projects_client import ProjectsClient
+from app.nlu.compose import with_message
 from app.nlu.confirmation import clarification_prompt, confirmation_prompt
 from app.nlu.mapping import to_decision
 from app.nlu.rules import merge_answer, propose
@@ -171,26 +172,48 @@ async def process_context(
                 user_id=x_user_id,
                 decision=decision,
             )
-            return {
-                "type": "new_intent" if execution.get("executed") else "context_only",
-                "extraction": None,
-                "context_update": None,
-                "resolution": None,
-                "resolution_error": None,
-                "activity": None,
-                "activity_project": None,
-                "decision": decision,
-                "execution": execution,
-                "tier": "rules",
-                "pending_action": None,
-                "prompt": None,
-            }
+            return with_message(
+                {
+                    "type": (
+                        "new_intent" if execution.get("executed") else "context_only"
+                    ),
+                    "extraction": None,
+                    "context_update": None,
+                    "resolution": None,
+                    "resolution_error": None,
+                    "activity": None,
+                    "activity_project": None,
+                    "decision": decision,
+                    "execution": execution,
+                    "tier": "rules",
+                    "pending_action": None,
+                    "prompt": None,
+                }
+            )
 
         # Still incomplete. A MEDIUM proposal needs one more slot (ask for it);
         # a LOW one is still category-ambiguous (ask the user to pick again).
         if merged.band == "medium":
-            return {
-                "type": "needs_confirmation",
+            return with_message(
+                {
+                    "type": "needs_confirmation",
+                    "extraction": None,
+                    "context_update": None,
+                    "resolution": None,
+                    "resolution_error": None,
+                    "activity": None,
+                    "activity_project": None,
+                    "decision": None,
+                    "execution": None,
+                    "tier": "rules",
+                    "pending_action": merged,
+                    "prompt": confirmation_prompt(merged),
+                }
+            )
+
+        return with_message(
+            {
+                "type": "needs_clarification",
                 "extraction": None,
                 "context_update": None,
                 "resolution": None,
@@ -201,23 +224,9 @@ async def process_context(
                 "execution": None,
                 "tier": "rules",
                 "pending_action": merged,
-                "prompt": confirmation_prompt(merged),
+                "prompt": clarification_prompt(merged),
             }
-
-        return {
-            "type": "needs_clarification",
-            "extraction": None,
-            "context_update": None,
-            "resolution": None,
-            "resolution_error": None,
-            "activity": None,
-            "activity_project": None,
-            "decision": None,
-            "execution": None,
-            "tier": "rules",
-            "pending_action": merged,
-            "prompt": clarification_prompt(merged),
-        }
+        )
 
     context = context_service.get_context(
         x_user_id,
@@ -255,40 +264,44 @@ async def process_context(
         # The context extractor above still ran, so a co-occurring context
         # update is not lost. The prefilled slots ride back on pending_action
         # so the client can echo them with the user's answer next turn.
-        return {
-            "type": "needs_confirmation",
-            "extraction": extraction,
-            "context_update": context_update.context,
-            "resolution": None,
-            "resolution_error": None,
-            "activity": None,
-            "activity_project": None,
-            "decision": None,
-            "execution": None,
-            "tier": "rules",
-            "pending_action": proposal,
-            "prompt": confirmation_prompt(proposal),
-        }
+        return with_message(
+            {
+                "type": "needs_confirmation",
+                "extraction": extraction,
+                "context_update": context_update.context,
+                "resolution": None,
+                "resolution_error": None,
+                "activity": None,
+                "activity_project": None,
+                "decision": None,
+                "execution": None,
+                "tier": "rules",
+                "pending_action": proposal,
+                "prompt": confirmation_prompt(proposal),
+            }
+        )
 
     elif proposal is not None:
         # Tier-1 sees an actionable intent but can't tell which category it is
         # (a recurring activity that could be a habit or a recurring reminder).
         # Ask the user to pick rather than escalating to the LLM to guess. The
         # candidates ride back on pending_action for the answer turn.
-        return {
-            "type": "needs_clarification",
-            "extraction": extraction,
-            "context_update": context_update.context,
-            "resolution": None,
-            "resolution_error": None,
-            "activity": None,
-            "activity_project": None,
-            "decision": None,
-            "execution": None,
-            "tier": "rules",
-            "pending_action": proposal,
-            "prompt": clarification_prompt(proposal),
-        }
+        return with_message(
+            {
+                "type": "needs_clarification",
+                "extraction": extraction,
+                "context_update": context_update.context,
+                "resolution": None,
+                "resolution_error": None,
+                "activity": None,
+                "activity_project": None,
+                "decision": None,
+                "execution": None,
+                "tier": "rules",
+                "pending_action": proposal,
+                "prompt": clarification_prompt(proposal),
+            }
+        )
 
     else:
         resolution = await resolver.resolve(
@@ -352,20 +365,22 @@ async def process_context(
     else:
         response_type = "context_only"
 
-    return {
-        "type": response_type,
-        "extraction": extraction,
-        "context_update": context_update.context,
-        "resolution": resolution,
-        "resolution_error": resolution_error,
-        "activity": activity,
-        "activity_project": activity_project,
-        "decision": decision,
-        "execution": execution,
-        "tier": tier,
-        "pending_action": None,
-        "prompt": None,
-    }
+    return with_message(
+        {
+            "type": response_type,
+            "extraction": extraction,
+            "context_update": context_update.context,
+            "resolution": resolution,
+            "resolution_error": resolution_error,
+            "activity": activity,
+            "activity_project": activity_project,
+            "decision": decision,
+            "execution": execution,
+            "tier": tier,
+            "pending_action": None,
+            "prompt": None,
+        }
+    )
 
 
 @router.post(
