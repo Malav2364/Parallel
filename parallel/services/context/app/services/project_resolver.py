@@ -16,12 +16,12 @@ class ProjectResolver:
             api_key=settings.GEMINI_API_KEY,
         )
 
-    def resolve(
+    async def resolve(
         self,
         user_id: str,
         user_input: str,
     ) -> ProjectResolution:
-        projects = self.projects_client.list_projects(
+        projects = await self.projects_client.list_projects(
             user_id,
         )
 

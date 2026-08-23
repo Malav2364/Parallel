@@ -4,29 +4,36 @@ from app.core.config import settings
 
 
 class ProjectsClient:
-    def __init__(self) -> None:
+    def __init__(self, client: httpx.AsyncClient) -> None:
         self.base_url = settings.PROJECTS_SERVICE_URL.rstrip("/")
+        self._client = client
 
-    def create_project(
+    async def create_project(
         self,
         user_id: str,
         name: str,
         description: str | None = None,
+        idempotency_key: str | None = None,
     ) -> dict:
-        response = httpx.post(
+        headers = {"X-User-Id": user_id}
+
+        if idempotency_key is not None:
+            headers["Idempotency-Key"] = idempotency_key
+
+        response = await self._client.post(
             f"{self.base_url}/projects",
-            headers={"X-User-Id": user_id},
+            headers=headers,
             json={"name": name, "description": description},
             timeout=10.0,
         )
         response.raise_for_status()
         return response.json()
 
-    def list_projects(
+    async def list_projects(
         self,
         user_id: str,
     ) -> list[dict]:
-        response = httpx.get(
+        response = await self._client.get(
             f"{self.base_url}/projects",
             headers={"X-User-Id": user_id},
             timeout=10.0,
@@ -34,26 +41,25 @@ class ProjectsClient:
         response.raise_for_status()
         return response.json()
 
-    def get_by_name(
+    async def get_by_name(
         self,
         user_id: str,
         name: str,
     ) -> dict | None:
         normalized_name = name.strip().lower()
 
-        projects = self.list_projects(user_id)
+        projects = await self.list_projects(user_id)
 
         return next(
             (
                 project
                 for project in projects
-                if project.get("name", "").strip().lower()
-                == normalized_name
+                if project.get("name", "").strip().lower() == normalized_name
             ),
             None,
         )
 
-    def update_activity(
+    async def update_activity(
         self,
         project_id: str,
         current_focus: str | None,
@@ -68,7 +74,7 @@ class ProjectsClient:
             if value is not None
         }
 
-        response = httpx.patch(
+        response = await self._client.patch(
             f"{self.base_url}/projects/{project_id}/activity",
             json=activity_update,
             timeout=10.0,
