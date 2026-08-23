@@ -233,6 +233,19 @@ class ActionExecutor:
             "idempotency_key": idempotency_key,
         }
 
+    @staticmethod
+    def _parse_scheduled_for(value: str) -> datetime:
+        # Accept an ISO 8601 datetime and normalize to IST. A tz-naive value
+        # is assumed to already be IST; an aware value is converted. Raises
+        # ValueError on a malformed string (handled by the caller).
+        parsed = datetime.fromisoformat(value)
+        tz = ZoneInfo("Asia/Kolkata")
+
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=tz)
+
+        return parsed.astimezone(tz)
+
     async def _create_reminder(
         self,
         user_id: str,
@@ -253,32 +266,48 @@ class ActionExecutor:
                 "reason": "Reminder title was not provided.",
             }
 
-        if not decision.reminder_date:
-            return {
-                "executed": False,
-                "action": "create_reminder",
-                "reason": "Reminder date was not provided.",
-            }
+        # Prefer an already-resolved absolute datetime (e.g. from the
+        # deterministic Tier-1 cascade). Otherwise fall back to resolving the
+        # date + time expressions the LLM decision path emits.
+        if decision.reminder_scheduled_for:
+            try:
+                scheduled_for = self._parse_scheduled_for(
+                    decision.reminder_scheduled_for,
+                )
+            except ValueError:
+                return {
+                    "executed": False,
+                    "action": "create_reminder",
+                    "reason": "Reminder scheduled_for is not a valid datetime.",
+                }
 
-        if not decision.reminder_time:
-            return {
-                "executed": False,
-                "action": "create_reminder",
-                "reason": "Reminder time was not provided.",
-            }
+        else:
+            if not decision.reminder_date:
+                return {
+                    "executed": False,
+                    "action": "create_reminder",
+                    "reason": "Reminder date was not provided.",
+                }
 
-        try:
-            scheduled_for = ReminderDateTimeResolver.resolve(
-                date_expression=decision.reminder_date,
-                time_expression=decision.reminder_time,
-            )
+            if not decision.reminder_time:
+                return {
+                    "executed": False,
+                    "action": "create_reminder",
+                    "reason": "Reminder time was not provided.",
+                }
 
-        except ValueError as exc:
-            return {
-                "executed": False,
-                "action": "create_reminder",
-                "reason": str(exc),
-            }
+            try:
+                scheduled_for = ReminderDateTimeResolver.resolve(
+                    date_expression=decision.reminder_date,
+                    time_expression=decision.reminder_time,
+                )
+
+            except ValueError as exc:
+                return {
+                    "executed": False,
+                    "action": "create_reminder",
+                    "reason": str(exc),
+                }
 
         now = datetime.now(
             ZoneInfo("Asia/Kolkata")

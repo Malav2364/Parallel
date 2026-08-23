@@ -10,6 +10,8 @@ from app.api.deps import (
     get_projects_client,
 )
 from app.clients.projects_client import ProjectsClient
+from app.nlu.mapping import to_decision
+from app.nlu.rules import propose
 from app.schemas import (
     ContextAnalyzeRequest,
     ContextDecision,
@@ -166,57 +168,76 @@ async def process_context(
         updates=extraction.updates,
     )
 
-    resolution = await resolver.resolve(
-        user_id=x_user_id,
-        user_input=request.message,
-    )
+    proposal = propose(request.message)
 
-    activity = None
-    activity_project = None
-    resolution_error = None
+    if proposal is not None and proposal.is_executable:
+        # Deterministic Tier-1 hit: build the decision directly and skip the
+        # project resolver, activity extractor, and decision-engine LLM calls.
+        # The context extractor above still ran, so a co-occurring context
+        # update is not lost.
+        decision = to_decision(proposal)
+        resolution = None
+        resolution_error = None
+        activity = None
+        activity_project = None
+        tier = "rules"
 
-    if resolution.matched:
-        projects = await projects_client.list_projects(
-            x_user_id,
+    else:
+        resolution = await resolver.resolve(
+            user_id=x_user_id,
+            user_input=request.message,
         )
-        project = _find_project_by_id(
-            projects=projects,
-            project_id=resolution.project_id,
-        )
 
-        if project is None:
-            resolution_error = "Resolved project could not be found."
-        else:
-            activity = activity_extractor.extract(
-                user_input=request.message,
-                project=project,
+        activity = None
+        activity_project = None
+        resolution_error = None
+
+        if resolution.matched:
+            projects = await projects_client.list_projects(
+                x_user_id,
+            )
+            project = _find_project_by_id(
+                projects=projects,
+                project_id=resolution.project_id,
             )
 
-            if (
-                activity.current_focus is not None
-                or activity.latest_activity is not None
-            ):
-                activity_project = await projects_client.update_activity(
-                    project_id=resolution.project_id,
-                    current_focus=activity.current_focus,
-                    latest_activity=activity.latest_activity,
+            if project is None:
+                resolution_error = "Resolved project could not be found."
+            else:
+                activity = activity_extractor.extract(
+                    user_input=request.message,
+                    project=project,
                 )
 
-    decision = decision_engine.evaluate(
-        user_input=request.message,
-        current_context=context.context,
-        extraction=extraction,
-        project_resolution=resolution,
-    )
+                if (
+                    activity.current_focus is not None
+                    or activity.latest_activity is not None
+                ):
+                    activity_project = await projects_client.update_activity(
+                        project_id=resolution.project_id,
+                        current_focus=activity.current_focus,
+                        latest_activity=activity.latest_activity,
+                    )
+
+        decision = decision_engine.evaluate(
+            user_input=request.message,
+            current_context=context.context,
+            extraction=extraction,
+            project_resolution=resolution,
+        )
+
+        tier = "llm"
 
     execution = await executor.execute(
         user_id=x_user_id,
         decision=decision,
     )
 
-    if resolution.matched and execution.get("executed"):
+    matched = bool(resolution and resolution.matched)
+
+    if matched and execution.get("executed"):
         response_type = "multi_intent"
-    elif resolution.matched:
+    elif matched:
         response_type = "existing_project"
     elif execution.get("executed"):
         response_type = "new_intent"
@@ -233,6 +254,7 @@ async def process_context(
         "activity_project": activity_project,
         "decision": decision,
         "execution": execution,
+        "tier": tier,
     }
 
 

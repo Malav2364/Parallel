@@ -1,0 +1,9 @@
+warning: Failed to uninstall package at .venv\Lib\site-packages\bcrypt-5.0.0.dist-info due to missing `RECORD` file. Installation may result in an incomplete environment.
+Uninstalled 2 packages in 2.27s
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 1 package in 260ms
+INFO:     Will watch for changes in these directories: ['D:\\parallel\\parallel\\services\\identity']
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [3160] using StatReload

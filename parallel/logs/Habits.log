@@ -1,0 +1,3 @@
+INFO:     Will watch for changes in these directories: ['D:\\parallel\\parallel\\services\\habits']
+INFO:     Uvicorn running on http://127.0.0.1:8006 (Press CTRL+C to quit)
+INFO:     Started reloader process [11068] using StatReload

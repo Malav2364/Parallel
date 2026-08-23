@@ -466,3 +466,80 @@ async def test_project_missing_name_is_rejected() -> None:
     assert result["executed"] is False
     assert "name" in result["reason"].lower()
     assert client.create_calls == []
+
+
+def _scheduled_decision(**overrides) -> ContextDecision:
+    # A reminder decision carrying a pre-resolved absolute datetime (as the
+    # deterministic Tier-1 cascade emits) instead of date/time expressions.
+    base = dict(
+        action="create_reminder",
+        reason="test",
+        reminder_title="Call mom",
+        reminder_scheduled_for="2999-01-01T09:00:00+05:30",
+    )
+    base.update(overrides)
+    return ContextDecision(**base)
+
+
+async def test_reminder_scheduled_for_creates_and_verifies() -> None:
+    client = FakeRemindersClient(created={"id": "rem-1", "title": "Call mom"})
+    result = await _executor(client).execute("user-1", _scheduled_decision())
+
+    assert result["executed"] is True
+    assert result["reminder_created"] is True
+    assert result["verified"] is True
+    assert result["idempotency_key"]
+    # The absolute datetime was used directly, normalized to IST.
+    assert client.create_calls[0]["scheduled_for"] == "2999-01-01T09:00:00+05:30"
+
+
+async def test_reminder_scheduled_for_in_the_past_is_rejected() -> None:
+    client = FakeRemindersClient()
+    result = await _executor(client).execute(
+        "user-1",
+        _scheduled_decision(reminder_scheduled_for="2000-01-01T09:00:00+05:30"),
+    )
+
+    assert result["executed"] is False
+    assert "past" in result["reason"].lower()
+    assert client.create_calls == []
+
+
+async def test_reminder_scheduled_for_malformed_is_structured_not_raised() -> None:
+    client = FakeRemindersClient()
+    result = await _executor(client).execute(
+        "user-1",
+        _scheduled_decision(reminder_scheduled_for="not-a-datetime"),
+    )
+
+    assert result["executed"] is False
+    assert "scheduled_for" in result["reason"].lower()
+    assert client.create_calls == []
+
+
+async def test_reminder_naive_scheduled_for_is_treated_as_ist() -> None:
+    # A tz-naive ISO string is assumed to already be IST and normalized.
+    client = FakeRemindersClient()
+    result = await _executor(client).execute(
+        "user-1",
+        _scheduled_decision(reminder_scheduled_for="2999-01-01T09:00:00"),
+    )
+
+    assert result["executed"] is True
+    assert client.create_calls[0]["scheduled_for"] == "2999-01-01T09:00:00+05:30"
+
+
+async def test_reminder_scheduled_for_takes_precedence_over_date_time() -> None:
+    # When both are present the pre-resolved absolute datetime wins and the
+    # narrow date/time resolver is not consulted.
+    client = FakeRemindersClient()
+    result = await _executor(client).execute(
+        "user-1",
+        _scheduled_decision(
+            reminder_date="tomorrow",
+            reminder_time="09:00",
+        ),
+    )
+
+    assert result["executed"] is True
+    assert client.create_calls[0]["scheduled_for"] == "2999-01-01T09:00:00+05:30"
