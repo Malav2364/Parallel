@@ -122,6 +122,11 @@ def test_high_reminder_takes_fast_path_and_skips_llm_stages() -> None:
     assert decision.action == "create_reminder"
     assert decision.reminder_scheduled_for is not None
 
+    message = body["message"]
+    assert isinstance(message, str) and message
+    assert "remind" in message.lower()
+    assert "call mom" in message.lower()
+
 
 def test_high_habit_takes_fast_path_and_skips_llm_stages() -> None:
     executor = RecordingExecutor()
@@ -213,6 +218,8 @@ def test_medium_reminder_requests_confirmation() -> None:
     assert pending["action"] == "create_reminder"
     assert pending["slots"]["title"] == "submit report"
     assert "when" in body["prompt"].lower()
+    # The composed reply is the same question we asked.
+    assert body["message"] == body["prompt"]
 
     # Nothing was executed -- we asked first.
     assert executor.decisions == []
@@ -248,6 +255,8 @@ def test_ambiguous_recurring_requests_clarification() -> None:
     assert pending["slots"]["schedule"] == "daily"
     assert "habit" in body["prompt"].lower()
     assert "reminder" in body["prompt"].lower()
+    # The composed reply is the same question we asked.
+    assert body["message"] == body["prompt"]
 
     # Nothing was executed -- we asked which category first.
     assert executor.decisions == []
@@ -392,6 +401,8 @@ def test_clarification_answer_habit_executes_deterministically() -> None:
     assert decision.action == "create_habit"
     assert decision.habit_name == "meditate"
     assert decision.habit_schedule == "daily"
+
+    assert "meditate" in body["message"]
 
 
 def test_clarification_answer_reminder_chains_to_confirmation() -> None:
