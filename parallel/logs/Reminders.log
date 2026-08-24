@@ -1,0 +1,15 @@
+INFO:     Will watch for changes in these directories: ['D:\\parallel\\parallel\\services\\reminders']
+INFO:     Uvicorn running on http://127.0.0.1:8008 (Press CTRL+C to quit)
+INFO:     Started reloader process [26432] using StatReload
+INFO:     Started server process [17080]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:64158 - "GET /api/v1/reminders HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64158 - "POST /api/v1/reminders HTTP/1.1" 201 Created
+INFO:     127.0.0.1:64158 - "GET /api/v1/reminders/fa5b46be-1be8-4dd0-bf88-17b1a3206623 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4628 - "GET /api/v1/reminders HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4628 - "POST /api/v1/reminders HTTP/1.1" 201 Created
+INFO:     127.0.0.1:4628 - "GET /api/v1/reminders/fae1cece-36d3-421a-a7c8-0e69b1f4fd4b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36922 - "GET /api/v1/reminders HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36922 - "POST /api/v1/reminders HTTP/1.1" 201 Created
+INFO:     127.0.0.1:36922 - "GET /api/v1/reminders/d15ebb28-df2f-4886-b7d6-c3f7f033f86b HTTP/1.1" 200 OK

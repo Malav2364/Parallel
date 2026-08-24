@@ -6,8 +6,10 @@ from app.clients.reminders_client import RemindersClient
 from app.clients.goals_client import GoalsClient
 from app.clients.projects_client import ProjectsClient
 from app.clients.workspace_client import WorkspaceClient
+from app.clients.embeddings_client import EmbeddingsClient
+from app.core.config import settings
 from app.db.database import get_db
-from app.repositories import ContextRepository
+from app.repositories import ContextRepository, ProjectEmbeddingRepository
 from app.services import (
     ContextDecisionEngine,
     ContextExtractor,
@@ -18,6 +20,7 @@ from app.services.action_executor import ActionExecutor
 from app.services.project_activity_extractor import (
     ProjectActivityExtractor,
 )
+from app.services.semantic_project_resolver import SemanticProjectResolver
 
 
 def get_context_repository(
@@ -81,6 +84,22 @@ def get_project_resolver(
     projects_client: ProjectsClient = Depends(get_projects_client),
 ) -> ProjectResolver:
     return ProjectResolver(projects_client)
+
+
+def get_embeddings_client() -> EmbeddingsClient:
+    return EmbeddingsClient()
+
+
+def get_semantic_project_resolver(
+    db: Session = Depends(get_db),
+    embeddings: EmbeddingsClient = Depends(get_embeddings_client),
+) -> SemanticProjectResolver:
+    return SemanticProjectResolver(
+        embeddings=embeddings,
+        repo=ProjectEmbeddingRepository(db),
+        threshold=settings.EMBEDDING_MATCH_THRESHOLD,
+        margin=settings.EMBEDDING_MATCH_MARGIN,
+    )
 
 
 def get_action_executor(

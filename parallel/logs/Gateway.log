@@ -1,0 +1,67 @@
+INFO:     Will watch for changes in these directories: ['D:\\parallel\\parallel\\services\\gateway']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [20820] using StatReload
+INFO:     Started server process [25480]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+2026-08-23 23:14:46,683 | INFO | gateway | [a4e85413-40ac-4a74-a541-8ba22e628e57] anonymous POST -> http://localhost:8001/api/v1/auth/login
+2026-08-23 23:14:49,740 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/login "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:48277 - "POST /api/identity/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:17374 - "OPTIONS /api/context/process HTTP/1.1" 200 OK
+2026-08-23 23:16:19,297 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-08-23 23:16:19,299 | INFO | gateway | [e0c39710-371c-4e40-b000-cf2d75f9c4cf] malavp024@gmail.com POST -> http://localhost:8004/api/v1/context/process
+2026-08-23 23:16:32,199 | INFO | httpx | HTTP Request: POST http://localhost:8004/api/v1/context/process "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:17374 - "POST /api/context/process HTTP/1.1" 200 OK
+2026-08-23 23:16:54,781 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-08-23 23:16:54,784 | INFO | gateway | [adb14deb-6de1-4667-9e5d-e2537928a580] malavp024@gmail.com POST -> http://localhost:8004/api/v1/context/process
+2026-08-23 23:16:59,203 | INFO | httpx | HTTP Request: POST http://localhost:8004/api/v1/context/process "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:14565 - "POST /api/context/process HTTP/1.1" 200 OK
+2026-08-23 23:17:11,049 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-08-23 23:17:11,052 | INFO | gateway | [008e2936-a219-4a04-b720-4d159b7ac71b] malavp024@gmail.com POST -> http://localhost:8004/api/v1/context/process
+2026-08-23 23:17:14,837 | INFO | httpx | HTTP Request: POST http://localhost:8004/api/v1/context/process "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:64151 - "POST /api/context/process HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55351 - "OPTIONS /api/identity/auth/logout HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55351 - "POST /api/identity/auth/logout HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:18743 - "OPTIONS /api/identity/auth/register HTTP/1.1" 200 OK
+2026-08-23 23:20:05,845 | INFO | gateway | [045884f1-6f23-4c73-8747-8889f5b8228e] anonymous POST -> http://localhost:8001/api/v1/auth/register
+2026-08-23 23:20:10,104 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/register "HTTP/1.1 201 Created"
+INFO:     127.0.0.1:3443 - "POST /api/identity/auth/register HTTP/1.1" 201 Created
+2026-08-23 23:21:43,831 | INFO | gateway | [a1506778-54b5-4bd7-8a58-abd8129d5f30] anonymous GET -> http://localhost:8001/api/v1/auth/verify-email
+2026-08-23 23:21:44,226 | INFO | httpx | HTTP Request: GET http://localhost:8001/api/v1/auth/verify-email?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0MTJAZ21haWwuY29tIiwiZXhwIjoxNzg3NTkzODA2LCJ0eXBlIjoiZW1haWxfdmVyaWZpY2F0aW9uIiwianRpIjoiNTRlYTBlMzEtZjhhMC00NDU0LTk4MDEtYTg4MTg1YzQzMTJlIn0.HD7B6XCWmpFQPehfdau1OZjN0MZvJKlAkPqJ0p7CxPs "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:8679 - "GET /api/identity/auth/verify-email?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0MTJAZ21haWwuY29tIiwiZXhwIjoxNzg3NTkzODA2LCJ0eXBlIjoiZW1haWxfdmVyaWZpY2F0aW9uIiwianRpIjoiNTRlYTBlMzEtZjhhMC00NDU0LTk4MDEtYTg4MTg1YzQzMTJlIn0.HD7B6XCWmpFQPehfdau1OZjN0MZvJKlAkPqJ0p7CxPs HTTP/1.1" 200 OK
+2026-08-23 23:22:18,215 | INFO | gateway | [cd64c7b3-a7dc-454f-938f-7612dd3730b0] anonymous POST -> http://localhost:8001/api/v1/auth/login
+2026-08-23 23:22:19,327 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/login "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:39118 - "POST /api/identity/auth/login HTTP/1.1" 200 OK
+2026-08-23 23:22:25,963 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-08-23 23:22:25,968 | INFO | gateway | [0362efda-8bf9-4083-8c49-7de039b3fe46] test12@gmail.com POST -> http://localhost:8004/api/v1/context/process
+2026-08-23 23:22:32,001 | INFO | httpx | HTTP Request: POST http://localhost:8004/api/v1/context/process "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:47455 - "POST /api/context/process HTTP/1.1" 200 OK
+2026-08-23 23:22:41,534 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-08-23 23:22:41,537 | INFO | gateway | [2619c31f-8a62-4370-87fa-6a0074b814f7] test12@gmail.com POST -> http://localhost:8004/api/v1/context/process
+2026-08-23 23:22:47,111 | INFO | httpx | HTTP Request: POST http://localhost:8004/api/v1/context/process "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:2228 - "POST /api/context/process HTTP/1.1" 200 OK
+2026-08-24 17:33:04,911 | INFO | gateway | [8d1aa917-888f-46f3-b2fa-8b6ea69340de] anonymous POST -> http://localhost:8001/api/v1/auth/login
+2026-08-24 17:33:05,879 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/login "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:65345 - "POST /api/identity/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5230 - "OPTIONS /api/context/process HTTP/1.1" 200 OK
+2026-08-24 17:34:14,948 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-08-24 17:34:14,952 | INFO | gateway | [2255a1a8-2171-4687-901e-b19ee54cfacb] malavp024@gmail.com POST -> http://localhost:8004/api/v1/context/process
+2026-08-24 17:34:30,715 | INFO | httpx | HTTP Request: POST http://localhost:8004/api/v1/context/process "HTTP/1.1 500 Internal Server Error"
+INFO:     127.0.0.1:5230 - "POST /api/context/process HTTP/1.1" 500 Internal Server Error
+2026-08-24 17:35:34,457 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-08-24 17:35:34,462 | INFO | gateway | [4a9d6918-907a-4e32-bf6c-2dc56151284f] malavp024@gmail.com POST -> http://localhost:8004/api/v1/context/process
+2026-08-24 17:35:43,385 | INFO | httpx | HTTP Request: POST http://localhost:8004/api/v1/context/process "HTTP/1.1 500 Internal Server Error"
+INFO:     127.0.0.1:56576 - "POST /api/context/process HTTP/1.1" 500 Internal Server Error
+2026-08-24 17:42:02,665 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-08-24 17:42:02,672 | INFO | gateway | [319d1689-d9e4-49d0-9aab-f5745b96176e] malavp024@gmail.com POST -> http://localhost:8004/api/v1/context/process
+2026-08-24 17:42:19,913 | INFO | httpx | HTTP Request: POST http://localhost:8004/api/v1/context/process "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:11178 - "POST /api/context/process HTTP/1.1" 200 OK
+2026-08-24 17:43:37,237 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-08-24 17:43:37,243 | INFO | gateway | [a35f58f6-1b28-4ceb-935d-c545d6c0312a] malavp024@gmail.com POST -> http://localhost:8004/api/v1/context/process
+2026-08-24 17:44:04,209 | INFO | httpx | HTTP Request: POST http://localhost:8004/api/v1/context/process "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:33313 - "POST /api/context/process HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55478 - "OPTIONS /api/context/process HTTP/1.1" 200 OK
+2026-08-24 17:44:25,976 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-08-24 17:44:25,980 | INFO | gateway | [f40af3f5-f969-4bfe-b3c4-d733b5a0502a] malavp024@gmail.com POST -> http://localhost:8004/api/v1/context/process
+2026-08-24 17:44:31,733 | INFO | httpx | HTTP Request: POST http://localhost:8004/api/v1/context/process "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:55478 - "POST /api/context/process HTTP/1.1" 200 OK

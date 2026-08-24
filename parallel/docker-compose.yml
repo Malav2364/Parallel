@@ -147,13 +147,15 @@ services:
       APP_ENV: development
       HOST: 0.0.0.0
       PORT: 8000
-      IDENTITY_SERVICE_URL: http://identity:8000
+      IDENTITY_SERVICE_URL: http://identity:8000/api/v1
       PROJECTS_SERVICE_URL: http://projects:8000/api/v1/projects
       WORKSPACE_SERVICE_URL: http://spaces:8000/api/v1
+      CONTEXT_SERVICE_URL: http://context:8000/api/v1/context
       JWT_SECRET_KEY: development-secret-key-change-me
       JWT_ALGORITHM: HS256
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
+      FRONTEND_URL: http://localhost:3000
     depends_on:
       identity:
         condition: service_started

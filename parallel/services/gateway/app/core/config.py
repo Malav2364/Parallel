@@ -12,8 +12,10 @@ class Settings(BaseSettings):
     IDENTITY_SERVICE_URL: str
     PROJECTS_SERVICE_URL: str
     WORKSPACE_SERVICE_URL: str
+    CONTEXT_SERVICE_URL: str
     LOG_LEVEL: str
     REDIS_URL: str
+    FRONTEND_URL: str
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

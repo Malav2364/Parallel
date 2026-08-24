@@ -18,11 +18,14 @@ from app.api.deps import (
     get_project_activity_extractor,
     get_project_resolver,
     get_projects_client,
+    get_semantic_project_resolver,
 )
 from app.main import app
 from app.schemas.decision import ContextDecision
+from app.schemas.project_activity import ProjectActivity
 from app.schemas.project_resolution import ProjectResolution
 from app.services.context_extractor import ContextExtraction
+from app.services.semantic_project_resolver import SemanticProjectResolver
 
 PROCESS_URL = "/api/v1/context/process"
 HEADERS = {"X-User-Id": "user-1"}
@@ -85,6 +88,127 @@ class RaiseIfCalled:
             raise AssertionError(f"{name} must not run on the fast path")
 
         return _boom
+
+
+class FakeProjectsClient:
+    """In-memory projects client for the Tier-2 semantic branch."""
+
+    def __init__(self, projects: list[dict]) -> None:
+        self._projects = projects
+        self.activity_updates: list[dict] = []
+
+    async def list_projects(self, user_id):
+        return self._projects
+
+    async def update_activity(self, project_id, current_focus, latest_activity):
+        self.activity_updates.append(
+            {
+                "project_id": project_id,
+                "current_focus": current_focus,
+                "latest_activity": latest_activity,
+            }
+        )
+        return {"id": project_id}
+
+
+class KeywordEmbeddings:
+    """Deterministic stand-in for the Gemini embeddings client.
+
+    Maps text to a basis vector by the first keyword it contains, so a test can
+    make one project the unambiguous cosine winner (or make everything
+    dissimilar) without any real embedding round-trip.
+    """
+
+    def __init__(
+        self,
+        mapping: dict[str, list[float]],
+        default: list[float],
+    ) -> None:
+        self._mapping = mapping
+        self._default = default
+
+    def _vector(self, text: str) -> list[float]:
+        lowered = text.lower()
+        for keyword, vector in self._mapping.items():
+            if keyword in lowered:
+                return list(vector)
+        return list(self._default)
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        return [self._vector(text) for text in texts]
+
+    def embed(self, text: str) -> list[float]:
+        return self._vector(text)
+
+
+class InMemoryEmbeddingRepo:
+    """Cache repo backed by a dict; mirrors ProjectEmbeddingRepository's surface."""
+
+    def __init__(self) -> None:
+        self.rows: dict[str, tuple[str, list[float]]] = {}
+
+    def get_many(self, user_id):
+        return dict(self.rows)
+
+    def upsert(self, user_id, project_id, text_hash, embedding):
+        self.rows[project_id] = (text_hash, embedding)
+
+    def commit(self):
+        pass
+
+
+class NoActivityExtractor:
+    def extract(self, user_input, project):
+        return ProjectActivity(
+            current_focus=None,
+            latest_activity=None,
+            confidence=1.0,
+        )
+
+
+class RecordingGeminiResolver:
+    """Tier-3 Gemini resolver stand-in that records whether it was consulted."""
+
+    def __init__(self) -> None:
+        self.called = False
+
+    async def resolve(self, user_id, user_input):
+        self.called = True
+        return ProjectResolution(
+            matched=False,
+            confidence=0.9,
+            reason="gemini: no match",
+        )
+
+
+def _semantic_projects() -> list[dict]:
+    return [
+        {
+            "id": "proj-novel",
+            "name": "Fantasy Novel",
+            "description": "drafting my fantasy novel",
+            "current_focus": None,
+        },
+        {
+            "id": "proj-taxes",
+            "name": "Quarterly Taxes",
+            "description": "file the quarterly taxes",
+            "current_focus": None,
+        },
+    ]
+
+
+def _keyword_semantic_resolver() -> SemanticProjectResolver:
+    embeddings = KeywordEmbeddings(
+        mapping={"novel": [1.0, 0.0, 0.0], "tax": [0.0, 1.0, 0.0]},
+        default=[0.0, 0.0, 1.0],
+    )
+    return SemanticProjectResolver(
+        embeddings=embeddings,
+        repo=InMemoryEmbeddingRepo(),
+        threshold=0.78,
+        margin=0.06,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -269,10 +393,13 @@ def test_non_reminder_falls_through_to_decision_engine() -> None:
     app.dependency_overrides[get_context_service] = lambda: FakeContextService()
     app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
     app.dependency_overrides[get_action_executor] = lambda: executor
-    app.dependency_overrides[get_project_resolver] = lambda: NoMatchResolver()
     app.dependency_overrides[get_context_decision_engine] = lambda: engine
     app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+    # No existing projects: the fallback branch short-circuits before either
+    # resolver, so both must stay untouched while the decision engine still runs.
+    app.dependency_overrides[get_projects_client] = lambda: FakeProjectsClient([])
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_semantic_project_resolver] = lambda: RaiseIfCalled()
 
     with TestClient(app) as client:
         response = client.post(
@@ -283,6 +410,75 @@ def test_non_reminder_falls_through_to_decision_engine() -> None:
 
     assert response.status_code == 200
     body = response.json()
+    assert body["tier"] == "llm"
+    assert body["resolution_source"] == "nlu"
+    assert engine.called is True
+
+
+def test_semantic_match_resolves_project_without_gemini() -> None:
+    executor = RecordingExecutor()
+    engine = RecordingDecisionEngine()
+
+    app.dependency_overrides[get_context_service] = lambda: FakeContextService()
+    app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    app.dependency_overrides[get_context_decision_engine] = lambda: engine
+    app.dependency_overrides[get_projects_client] = lambda: FakeProjectsClient(
+        _semantic_projects(),
+    )
+    app.dependency_overrides[get_semantic_project_resolver] = _keyword_semantic_resolver
+    app.dependency_overrides[get_project_activity_extractor] = (
+        lambda: NoActivityExtractor()
+    )
+    # Tier-2 resolves the project locally; the Gemini resolver must NOT run.
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={"message": "wrote three chapters of my novel today"},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["resolution_source"] == "nlu"
+    assert body["resolution"]["matched"] is True
+    assert body["resolution"]["project_id"] == "proj-novel"
+    assert body["tier"] == "llm"
+    assert engine.called is True
+
+
+def test_semantic_miss_falls_through_to_gemini() -> None:
+    executor = RecordingExecutor()
+    engine = RecordingDecisionEngine()
+    gemini = RecordingGeminiResolver()
+
+    app.dependency_overrides[get_context_service] = lambda: FakeContextService()
+    app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    app.dependency_overrides[get_context_decision_engine] = lambda: engine
+    app.dependency_overrides[get_projects_client] = lambda: FakeProjectsClient(
+        _semantic_projects(),
+    )
+    app.dependency_overrides[get_semantic_project_resolver] = _keyword_semantic_resolver
+    # Tier-2 finds nothing similar; the activity extractor must not run on a miss.
+    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    # Tier-3 Gemini resolver must be consulted on the semantic miss.
+    app.dependency_overrides[get_project_resolver] = lambda: gemini
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={"message": "I got promoted at work today"},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["resolution_source"] == "llm"
+    assert gemini.called is True
+    assert body["resolution"]["matched"] is False
     assert body["tier"] == "llm"
     assert engine.called is True
 
