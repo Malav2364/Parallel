@@ -8,6 +8,7 @@ from app.api.deps import (
     get_project_activity_extractor,
     get_project_resolver,
     get_projects_client,
+    get_semantic_project_resolver,
 )
 from app.clients.projects_client import ProjectsClient
 from app.nlu.compose import with_message
@@ -35,6 +36,7 @@ from app.services import (
 from app.services.project_activity_extractor import (
     ProjectActivityExtractor,
 )
+from app.services.semantic_project_resolver import SemanticProjectResolver
 
 router = APIRouter()
 
@@ -155,6 +157,9 @@ async def process_context(
     projects_client: ProjectsClient = Depends(
         get_projects_client,
     ),
+    semantic_resolver: SemanticProjectResolver = Depends(
+        get_semantic_project_resolver,
+    ),
 ):
     if request.pending_action is not None:
         # Answering a prior needs_confirmation: fill the missing slot from the
@@ -257,6 +262,7 @@ async def process_context(
         activity = None
         activity_project = None
         tier = "rules"
+        resolution_source = None
 
     elif proposal is not None and proposal.band == "medium":
         # Tier-1 recognised the intent but a required slot is missing. Ask for
@@ -304,19 +310,41 @@ async def process_context(
         )
 
     else:
-        resolution = await resolver.resolve(
-            user_id=x_user_id,
-            user_input=request.message,
+        # Tier-2 (local semantic NLU). Fetch the user's projects once, then try
+        # to resolve which one the message is about via in-process cosine over
+        # cached embeddings. A confident, unambiguous match skips the slower,
+        # non-deterministic Gemini resolver; anything uncertain (or no projects
+        # at all) falls through to it rather than guessing.
+        projects = await projects_client.list_projects(
+            x_user_id,
         )
 
         activity = None
         activity_project = None
         resolution_error = None
 
-        if resolution.matched:
-            projects = await projects_client.list_projects(
-                x_user_id,
+        if projects:
+            resolution = await semantic_resolver.resolve(
+                user_id=x_user_id,
+                user_input=request.message,
+                projects=projects,
             )
+            resolution_source = "nlu" if resolution.matched else "llm"
+
+            if not resolution.matched:
+                resolution = await resolver.resolve(
+                    user_id=x_user_id,
+                    user_input=request.message,
+                )
+        else:
+            resolution = ProjectResolution(
+                matched=False,
+                confidence=1.0,
+                reason="The user has no existing projects.",
+            )
+            resolution_source = "nlu"
+
+        if resolution.matched:
             project = _find_project_by_id(
                 projects=projects,
                 project_id=resolution.project_id,
@@ -377,6 +405,7 @@ async def process_context(
             "decision": decision,
             "execution": execution,
             "tier": tier,
+            "resolution_source": resolution_source,
             "pending_action": None,
             "prompt": None,
         }
