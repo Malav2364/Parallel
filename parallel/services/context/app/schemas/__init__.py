@@ -7,6 +7,7 @@ from .context import (
 )
 from .decision import ContextDecision, ContextSignal
 from .project_resolution import ProjectResolution
+from .understanding import UnderstandingResult
 
 __all__ = [
     "ContextAnalyzeRequest",
@@ -17,4 +18,5 @@ __all__ = [
     "ProjectResolution",
     "ContextResponse",
     "ContextUpdate",
+    "UnderstandingResult",
 ]

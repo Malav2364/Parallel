@@ -9,6 +9,7 @@ from app.api.deps import (
     get_project_resolver,
     get_projects_client,
     get_semantic_project_resolver,
+    get_understanding_engine,
 )
 from app.clients.projects_client import ProjectsClient
 from app.nlu.compose import with_message
@@ -32,6 +33,7 @@ from app.services import (
     ContextExtractor,
     ContextService,
     ProjectResolver,
+    UnderstandingEngine,
 )
 from app.services.project_activity_extractor import (
     ProjectActivityExtractor,
@@ -142,17 +144,14 @@ async def process_context(
     extractor: ContextExtractor = Depends(
         get_context_extractor,
     ),
-    decision_engine: ContextDecisionEngine = Depends(
-        get_context_decision_engine,
+    understanding: UnderstandingEngine = Depends(
+        get_understanding_engine,
     ),
     executor: ActionExecutor = Depends(
         get_action_executor,
     ),
     resolver: ProjectResolver = Depends(
         get_project_resolver,
-    ),
-    activity_extractor: ProjectActivityExtractor = Depends(
-        get_project_activity_extractor,
     ),
     projects_client: ProjectsClient = Depends(
         get_projects_client,
@@ -332,9 +331,12 @@ async def process_context(
             resolution_source = "nlu" if resolution.matched else "llm"
 
             if not resolution.matched:
+                # Semantic miss: reuse the projects already fetched above so the
+                # Gemini resolver doesn't re-fetch them itself.
                 resolution = await resolver.resolve(
                     user_id=x_user_id,
                     user_input=request.message,
+                    projects=projects,
                 )
         else:
             resolution = ProjectResolution(
@@ -344,6 +346,7 @@ async def process_context(
             )
             resolution_source = "nlu"
 
+        project = None
         if resolution.matched:
             project = _find_project_by_id(
                 projects=projects,
@@ -352,28 +355,36 @@ async def process_context(
 
             if project is None:
                 resolution_error = "Resolved project could not be found."
-            else:
-                activity = activity_extractor.extract(
-                    user_input=request.message,
-                    project=project,
-                )
 
-                if (
-                    activity.current_focus is not None
-                    or activity.latest_activity is not None
-                ):
-                    activity_project = await projects_client.update_activity(
-                        project_id=resolution.project_id,
-                        current_focus=activity.current_focus,
-                        latest_activity=activity.latest_activity,
-                    )
-
-        decision = decision_engine.evaluate(
+        # One Gemini call replaces the former activity-extractor + decision-
+        # engine pair: it decides and, when a project resolved cleanly, reports
+        # that project's current_focus / latest_activity in the same structured
+        # response. Activity and the decision are independent, so merging them
+        # drops a Tier-2-hit turn from two model calls to one.
+        result = understanding.decide(
             user_input=request.message,
             current_context=context.context,
             extraction=extraction,
             project_resolution=resolution,
+            project=project if resolution_error is None else None,
         )
+
+        decision = result.decision
+        activity = result.activity
+
+        if (
+            project is not None
+            and activity is not None
+            and (
+                activity.current_focus is not None
+                or activity.latest_activity is not None
+            )
+        ):
+            activity_project = await projects_client.update_activity(
+                project_id=resolution.project_id,
+                current_focus=activity.current_focus,
+                latest_activity=activity.latest_activity,
+            )
 
         tier = "llm"
 

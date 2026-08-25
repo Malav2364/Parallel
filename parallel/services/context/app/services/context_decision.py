@@ -21,9 +21,36 @@ class ContextDecisionEngine:
         project_resolution: ProjectResolution | None = None,
         now = datetime.now(ZoneInfo("Asia/Kolkata"))
     ) -> ContextDecision:
-        current_datetime = now.isoformat()
-        current_date = now.date().isoformat()
-        prompt = f"""
+        prompt = build_decision_prompt(
+            user_input=user_input,
+            current_context=current_context,
+            extraction=extraction,
+            project_resolution=project_resolution,
+            now=now,
+        )
+
+        response = self.client.models.generate_content(
+            model=settings.CONTEXT_MODEL,
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": ContextDecision.model_json_schema(),
+            },
+        )
+
+        return ContextDecision.model_validate_json(response.text or "{}")
+
+
+def build_decision_prompt(
+    user_input: str,
+    current_context: dict,
+    extraction: ContextExtraction,
+    project_resolution: ProjectResolution | None,
+    now,
+) -> str:
+    current_datetime = now.isoformat()
+    current_date = now.date().isoformat()
+    return f"""
 You are the decision component of PIOS, a Personal Intelligence Operating
 System.
 
@@ -969,14 +996,3 @@ The distinction is:
 
 Return the signals, exactly one action, and reason.
 """
-
-        response = self.client.models.generate_content(
-            model=settings.CONTEXT_MODEL,
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json",
-                "response_json_schema": ContextDecision.model_json_schema(),
-            },
-        )
-
-        return ContextDecision.model_validate_json(response.text or "{}")

@@ -15,6 +15,7 @@ from app.services import (
     ContextExtractor,
     ContextService,
     ProjectResolver,
+    UnderstandingEngine,
 )
 from app.services.action_executor import ActionExecutor
 from app.services.project_activity_extractor import (
@@ -41,6 +42,10 @@ def get_context_extractor() -> ContextExtractor:
 
 def get_context_decision_engine() -> ContextDecisionEngine:
     return ContextDecisionEngine()
+
+
+def get_understanding_engine() -> UnderstandingEngine:
+    return UnderstandingEngine()
 
 
 def get_http_client(request: Request) -> httpx.AsyncClient:

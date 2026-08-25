@@ -1,10 +1,10 @@
 """/process fast-path wiring: a HIGH Tier-1 reminder skips the LLM stages.
 
 These drive the real cascade (propose + mapping + the endpoint branch) through
-FastAPI, faking only the I/O services. The project resolver, decision engine,
-and activity extractor are replaced with stand-ins that raise if called, so a
-green fast-path test proves those three Gemini stages were skipped. A
-non-reminder message falls through and the decision engine does run.
+FastAPI, faking only the I/O services. The project resolver and the
+understanding engine (the merged decide+activity Gemini call) are replaced with
+stand-ins that raise if called, so a green fast-path test proves those Gemini
+stages were skipped. A non-reminder message falls through and the engine runs.
 """
 
 import pytest
@@ -12,18 +12,17 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import (
     get_action_executor,
-    get_context_decision_engine,
     get_context_extractor,
     get_context_service,
-    get_project_activity_extractor,
     get_project_resolver,
     get_projects_client,
     get_semantic_project_resolver,
+    get_understanding_engine,
 )
 from app.main import app
 from app.schemas.decision import ContextDecision
-from app.schemas.project_activity import ProjectActivity
 from app.schemas.project_resolution import ProjectResolution
+from app.schemas.understanding import UnderstandingResult
 from app.services.context_extractor import ContextExtraction
 from app.services.semantic_project_resolver import SemanticProjectResolver
 
@@ -62,13 +61,35 @@ class RecordingExecutor:
         return {"executed": True, "action": decision.action}
 
 
-class RecordingDecisionEngine:
+class RecordingUnderstandingEngine:
+    """Merged decide+activity engine stand-in.
+
+    Records that it ran and the ``project`` it was handed on each call -- a
+    resolved project dict on a match, ``None`` on a miss -- so a test can prove
+    the endpoint fed the right thing into the single Gemini call. Returns a
+    benign "none" decision with no activity; the engine's own parsing is
+    covered by test_understanding_engine.
+    """
+
     def __init__(self) -> None:
         self.called = False
+        self.projects: list[dict | None] = []
 
-    def evaluate(self, **kwargs):
+    def decide(
+        self,
+        user_input,
+        current_context,
+        extraction,
+        project_resolution=None,
+        project=None,
+        **kwargs,
+    ) -> UnderstandingResult:
         self.called = True
-        return ContextDecision(action="none", reason="fallback")
+        self.projects.append(project)
+        return UnderstandingResult(
+            decision=ContextDecision(action="none", reason="fallback"),
+            activity=None,
+        )
 
 
 class NoMatchResolver:
@@ -157,22 +178,13 @@ class InMemoryEmbeddingRepo:
         pass
 
 
-class NoActivityExtractor:
-    def extract(self, user_input, project):
-        return ProjectActivity(
-            current_focus=None,
-            latest_activity=None,
-            confidence=1.0,
-        )
-
-
 class RecordingGeminiResolver:
     """Tier-3 Gemini resolver stand-in that records whether it was consulted."""
 
     def __init__(self) -> None:
         self.called = False
 
-    async def resolve(self, user_id, user_input):
+    async def resolve(self, user_id, user_input, projects=None):
         self.called = True
         return ProjectResolution(
             matched=False,
@@ -225,8 +237,7 @@ def test_high_reminder_takes_fast_path_and_skips_llm_stages() -> None:
     app.dependency_overrides[get_action_executor] = lambda: executor
     # The three LLM stages the fast path must skip: raise if touched.
     app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
 
     with TestClient(app) as client:
@@ -260,8 +271,7 @@ def test_high_habit_takes_fast_path_and_skips_llm_stages() -> None:
     app.dependency_overrides[get_action_executor] = lambda: executor
     # The three LLM stages the fast path must skip: raise if touched.
     app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
 
     with TestClient(app) as client:
@@ -291,8 +301,7 @@ def test_high_goal_takes_fast_path_and_skips_llm_stages() -> None:
     app.dependency_overrides[get_action_executor] = lambda: executor
     # The three LLM stages the fast path must skip: raise if touched.
     app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
 
     with TestClient(app) as client:
@@ -322,8 +331,7 @@ def test_medium_reminder_requests_confirmation() -> None:
     app.dependency_overrides[get_action_executor] = lambda: executor
     # A MEDIUM proposal must skip both execution and every LLM stage.
     app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
 
     with TestClient(app) as client:
@@ -357,8 +365,7 @@ def test_ambiguous_recurring_requests_clarification() -> None:
     app.dependency_overrides[get_action_executor] = lambda: executor
     # A LOW proposal must skip both execution and every LLM stage.
     app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
 
     with TestClient(app) as client:
@@ -386,17 +393,16 @@ def test_ambiguous_recurring_requests_clarification() -> None:
     assert executor.decisions == []
 
 
-def test_non_reminder_falls_through_to_decision_engine() -> None:
+def test_non_reminder_falls_through_to_understanding_engine() -> None:
     executor = RecordingExecutor()
-    engine = RecordingDecisionEngine()
+    understanding = RecordingUnderstandingEngine()
 
     app.dependency_overrides[get_context_service] = lambda: FakeContextService()
     app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
     app.dependency_overrides[get_action_executor] = lambda: executor
-    app.dependency_overrides[get_context_decision_engine] = lambda: engine
-    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: understanding
     # No existing projects: the fallback branch short-circuits before either
-    # resolver, so both must stay untouched while the decision engine still runs.
+    # resolver, so both stay untouched while the understanding engine still runs.
     app.dependency_overrides[get_projects_client] = lambda: FakeProjectsClient([])
     app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_semantic_project_resolver] = lambda: RaiseIfCalled()
@@ -412,24 +418,23 @@ def test_non_reminder_falls_through_to_decision_engine() -> None:
     body = response.json()
     assert body["tier"] == "llm"
     assert body["resolution_source"] == "nlu"
-    assert engine.called is True
+    assert understanding.called is True
+    # No projects -> a miss -> the engine is handed no project to report on.
+    assert understanding.projects[-1] is None
 
 
 def test_semantic_match_resolves_project_without_gemini() -> None:
     executor = RecordingExecutor()
-    engine = RecordingDecisionEngine()
+    understanding = RecordingUnderstandingEngine()
 
     app.dependency_overrides[get_context_service] = lambda: FakeContextService()
     app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
     app.dependency_overrides[get_action_executor] = lambda: executor
-    app.dependency_overrides[get_context_decision_engine] = lambda: engine
+    app.dependency_overrides[get_understanding_engine] = lambda: understanding
     app.dependency_overrides[get_projects_client] = lambda: FakeProjectsClient(
         _semantic_projects(),
     )
     app.dependency_overrides[get_semantic_project_resolver] = _keyword_semantic_resolver
-    app.dependency_overrides[get_project_activity_extractor] = (
-        lambda: NoActivityExtractor()
-    )
     # Tier-2 resolves the project locally; the Gemini resolver must NOT run.
     app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
 
@@ -446,24 +451,25 @@ def test_semantic_match_resolves_project_without_gemini() -> None:
     assert body["resolution"]["matched"] is True
     assert body["resolution"]["project_id"] == "proj-novel"
     assert body["tier"] == "llm"
-    assert engine.called is True
+    assert understanding.called is True
+    # A local match hands the resolved project dict to the single Gemini call.
+    assert understanding.projects[-1] is not None
+    assert understanding.projects[-1]["id"] == "proj-novel"
 
 
 def test_semantic_miss_falls_through_to_gemini() -> None:
     executor = RecordingExecutor()
-    engine = RecordingDecisionEngine()
+    understanding = RecordingUnderstandingEngine()
     gemini = RecordingGeminiResolver()
 
     app.dependency_overrides[get_context_service] = lambda: FakeContextService()
     app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
     app.dependency_overrides[get_action_executor] = lambda: executor
-    app.dependency_overrides[get_context_decision_engine] = lambda: engine
+    app.dependency_overrides[get_understanding_engine] = lambda: understanding
     app.dependency_overrides[get_projects_client] = lambda: FakeProjectsClient(
         _semantic_projects(),
     )
     app.dependency_overrides[get_semantic_project_resolver] = _keyword_semantic_resolver
-    # Tier-2 finds nothing similar; the activity extractor must not run on a miss.
-    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
     # Tier-3 Gemini resolver must be consulted on the semantic miss.
     app.dependency_overrides[get_project_resolver] = lambda: gemini
 
@@ -480,7 +486,9 @@ def test_semantic_miss_falls_through_to_gemini() -> None:
     assert gemini.called is True
     assert body["resolution"]["matched"] is False
     assert body["tier"] == "llm"
-    assert engine.called is True
+    assert understanding.called is True
+    # A miss hands the engine no project (no activity to report).
+    assert understanding.projects[-1] is None
 
 
 def test_confirmation_answer_executes_deterministically() -> None:
@@ -492,8 +500,7 @@ def test_confirmation_answer_executes_deterministically() -> None:
     app.dependency_overrides[get_context_service] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_context_extractor] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
 
     with TestClient(app) as client:
@@ -530,8 +537,7 @@ def test_ambiguous_confirmation_answer_re_confirms() -> None:
     app.dependency_overrides[get_context_service] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_context_extractor] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
 
     with TestClient(app) as client:
@@ -576,8 +582,7 @@ def test_clarification_answer_habit_executes_deterministically() -> None:
     app.dependency_overrides[get_context_service] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_context_extractor] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
 
     with TestClient(app) as client:
@@ -608,8 +613,7 @@ def test_clarification_answer_reminder_chains_to_confirmation() -> None:
     app.dependency_overrides[get_context_service] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_context_extractor] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_context_decision_engine] = lambda: RaiseIfCalled()
-    app.dependency_overrides[get_project_activity_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
     app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
 
     with TestClient(app) as client:
