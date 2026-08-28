@@ -1,13 +1,16 @@
-"""UnderstandingEngine: the single Gemini call that decides and, for a matched
-project, reports that project's activity in the same structured response.
+"""UnderstandingEngine: the single Gemini call that extracts durable context,
+decides, and -- for a matched project -- reports that project's activity, all in
+one structured response.
 
 These are hermetic -- no genai client is constructed and no network is touched.
 Each test builds the engine via ``__new__`` (skipping the real client) and swaps
 in a fake whose ``models.generate_content`` returns canned JSON while recording
-the prompt and config it was handed. That lets us assert three things: a matched
-project makes the prompt ask for activity and the result parses it; a miss omits
-the activity section; and an unparseable/partial response falls back to a no-op
-decision instead of raising (never silently wrong).
+the prompt and config it was handed. That lets us assert: a matched project makes
+the prompt ask for activity and the result parses it; a miss omits the activity
+section; the extraction rides back normalized the way the standalone extractor
+would have left it; a response with no extraction degrades to "no durable
+context"; and an unparseable/partial response falls back to a no-op decision
+instead of raising (never silently wrong).
 """
 
 from types import SimpleNamespace
@@ -43,10 +46,6 @@ def _engine_with_response(response_text):
     return engine, recorder
 
 
-def _extraction() -> ContextExtraction:
-    return ContextExtraction(updates={}, confidence=1.0, reasoning="")
-
-
 def test_matched_project_requests_and_parses_activity() -> None:
     payload = UnderstandingResult(
         decision=ContextDecision(action="none", reason="noted"),
@@ -62,7 +61,6 @@ def test_matched_project_requests_and_parses_activity() -> None:
     result = engine.decide(
         user_input="wrote three chapters of my novel today",
         current_context={"goals": []},
-        extraction=_extraction(),
         project_resolution=ProjectResolution(
             matched=True,
             project_id="proj-novel",
@@ -87,6 +85,66 @@ def test_matched_project_requests_and_parses_activity() -> None:
     )
 
 
+def test_merged_call_asks_for_and_normalizes_the_extraction() -> None:
+    # The merged call also carries the durable-context extraction, and it lands
+    # normalized exactly as the standalone ContextExtractor would have left it:
+    # a raw ``goals`` list folded into ``goals_to_add`` minus what the user
+    # already has, and the service-owned ``projects`` key dropped.
+    payload = UnderstandingResult(
+        decision=ContextDecision(action="none", reason="noted"),
+        extraction=ContextExtraction(
+            updates={
+                "occupation": "staff engineer",
+                "goals": ["learn Rust", "Run a marathon"],
+                "projects": ["owned by the projects service"],
+            },
+            confidence=0.8,
+            reasoning="explicitly stated",
+        ),
+    ).model_dump_json()
+    engine, recorder = _engine_with_response(payload)
+
+    result = engine.decide(
+        user_input="I'm a staff engineer now and I want to learn Rust",
+        current_context={"goals": ["run a marathon"]},
+        project_resolution=None,
+        project=None,
+    )
+
+    assert result.extraction.updates == {
+        "occupation": "staff engineer",
+        "goals_to_add": ["learn Rust"],
+    }
+    assert result.extraction.confidence == 0.8
+
+    # The prompt asked for the extraction, and says updates land AFTER this
+    # call rather than repeating the pre-merge "already persisted" wording.
+    assert "DURABLE CONTEXT EXTRACTION" in recorder["contents"]
+    assert (
+        "The Context Service persists the extracted updates AFTER this call "
+        "returns." in recorder["contents"]
+    )
+
+
+def test_missing_extraction_degrades_to_empty_updates() -> None:
+    # A response that omits ``extraction`` must not fail the turn; the schema
+    # default reads as "this message carried no durable context".
+    engine, _ = _engine_with_response(
+        '{"decision": {"action": "none", "reason": "noted"}}'
+    )
+
+    result = engine.decide(
+        user_input="hello there",
+        current_context={"goals": []},
+        project_resolution=None,
+        project=None,
+    )
+
+    assert result.decision.action == "none"
+    assert result.extraction.updates == {}
+    assert result.extraction.confidence == 0.0
+
+
 def test_miss_omits_activity_section() -> None:
     payload = UnderstandingResult(
         decision=ContextDecision(action="none", reason="noted"),
@@ -97,7 +155,6 @@ def test_miss_omits_activity_section() -> None:
     result = engine.decide(
         user_input="I got promoted at work today",
         current_context={"goals": []},
-        extraction=_extraction(),
         project_resolution=ProjectResolution(
             matched=False,
             confidence=0.9,
@@ -118,7 +175,6 @@ def test_unparseable_response_falls_back_safely() -> None:
     result = engine.decide(
         user_input="hello there",
         current_context={},
-        extraction=_extraction(),
         project_resolution=None,
         project=None,
     )
@@ -135,7 +191,6 @@ def test_missing_decision_falls_back_safely() -> None:
     result = engine.decide(
         user_input="hello there",
         current_context={},
-        extraction=_extraction(),
         project_resolution=None,
         project=None,
     )
@@ -151,7 +206,6 @@ def test_empty_response_text_falls_back_safely() -> None:
     result = engine.decide(
         user_input="hello there",
         current_context={},
-        extraction=_extraction(),
         project_resolution=None,
         project=None,
     )
