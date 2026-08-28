@@ -238,23 +238,28 @@ async def process_context(
 
     original_context = copy.deepcopy(context.context)
 
-    extraction = extractor.extract(
-        user_input=request.message,
-        current_context=original_context,
-    )
-
-    context_update = context_service.apply_updates(
-        user_id=x_user_id,
-        updates=extraction.updates,
-    )
-
     proposal = propose(request.message)
+
+    if proposal is not None:
+        # Tier-1 paths never reach the understanding engine, so they still need
+        # the standalone extract to catch a co-occurring durable-context update.
+        # On the Tier-2/3 fallback below the same extraction comes back from the
+        # merged understanding call instead, saving a Gemini round trip.
+        extraction = extractor.extract(
+            user_input=request.message,
+            current_context=original_context,
+        )
+
+        context_update = context_service.apply_updates(
+            user_id=x_user_id,
+            updates=extraction.updates,
+        )
 
     if proposal is not None and proposal.is_executable:
         # Deterministic Tier-1 hit: build the decision directly and skip the
-        # project resolver, activity extractor, and decision-engine LLM calls.
-        # The context extractor above still ran, so a co-occurring context
-        # update is not lost.
+        # project resolver and the understanding-engine LLM call. The context
+        # extractor above still ran, so a co-occurring context update is not
+        # lost.
         decision = to_decision(proposal)
         resolution = None
         resolution_error = None
@@ -356,21 +361,29 @@ async def process_context(
             if project is None:
                 resolution_error = "Resolved project could not be found."
 
-        # One Gemini call replaces the former activity-extractor + decision-
-        # engine pair: it decides and, when a project resolved cleanly, reports
-        # that project's current_focus / latest_activity in the same structured
-        # response. Activity and the decision are independent, so merging them
-        # drops a Tier-2-hit turn from two model calls to one.
+        # One Gemini call replaces the former extractor + activity-extractor +
+        # decision-engine trio: it extracts durable context, decides, and (when
+        # a project resolved cleanly) reports that project's current_focus /
+        # latest_activity in the same structured response. All three are
+        # independent, so merging them drops a Tier-2-hit turn to one model call.
         result = understanding.decide(
             user_input=request.message,
-            current_context=context.context,
-            extraction=extraction,
+            current_context=original_context,
             project_resolution=resolution,
             project=project if resolution_error is None else None,
         )
 
         decision = result.decision
         activity = result.activity
+
+        # The extraction rode back on the merged call, so it commits here --
+        # after the model saw the pre-update context, still before the response
+        # is built.
+        extraction = result.extraction
+        context_update = context_service.apply_updates(
+            user_id=x_user_id,
+            updates=extraction.updates,
+        )
 
         if (
             project is not None

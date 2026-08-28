@@ -62,33 +62,35 @@ class RecordingExecutor:
 
 
 class RecordingUnderstandingEngine:
-    """Merged decide+activity engine stand-in.
+    """Merged extract+decide+activity engine stand-in.
 
     Records that it ran and the ``project`` it was handed on each call -- a
     resolved project dict on a match, ``None`` on a miss -- so a test can prove
     the endpoint fed the right thing into the single Gemini call. Returns a
-    benign "none" decision with no activity; the engine's own parsing is
-    covered by test_understanding_engine.
+    benign "none" decision with an empty extraction and no activity; the
+    engine's own parsing is covered by test_understanding_engine.
     """
 
     def __init__(self) -> None:
         self.called = False
         self.projects: list[dict | None] = []
+        self.contexts: list[dict] = []
 
     def decide(
         self,
         user_input,
         current_context,
-        extraction,
         project_resolution=None,
         project=None,
         **kwargs,
     ) -> UnderstandingResult:
         self.called = True
         self.projects.append(project)
+        self.contexts.append(current_context)
         return UnderstandingResult(
             decision=ContextDecision(action="none", reason="fallback"),
             activity=None,
+            extraction=ContextExtraction(updates={}, confidence=1.0, reasoning=""),
         )
 
 

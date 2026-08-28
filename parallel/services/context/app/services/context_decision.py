@@ -44,12 +44,45 @@ class ContextDecisionEngine:
 def build_decision_prompt(
     user_input: str,
     current_context: dict,
-    extraction: ContextExtraction,
+    extraction: ContextExtraction | None,
     project_resolution: ProjectResolution | None,
     now,
 ) -> str:
     current_datetime = now.isoformat()
     current_date = now.date().isoformat()
+
+    # ``extraction`` is None on the merged understanding path, where this same
+    # call produces the extraction it would otherwise have been handed. Only
+    # these three blocks differ; every rule below is shared by both paths.
+    if extraction is not None:
+        new_information = (
+            f"NEW information extracted FROM this message:\n{extraction.updates}"
+        )
+        persistence_note = (
+            "The Context Service may persist the extracted updates before the "
+            "Decision\nEngine executes."
+        )
+        activity_note = (
+            "Existing project activity updates are also already processed\n"
+            "before the Decision Engine runs."
+        )
+    else:
+        new_information = (
+            "NEW information extracted FROM this message:\n"
+            "You produce this yourself as `extraction.updates` in this same "
+            "response\n(see DURABLE CONTEXT EXTRACTION below). Treat whatever you "
+            "extract as\nnew information from this message, never as pre-existing "
+            "context."
+        )
+        persistence_note = (
+            "The Context Service persists the extracted updates AFTER this call "
+            "returns."
+        )
+        activity_note = (
+            "Existing project activity updates are handled by the Project "
+            "Activity\nlayer, not by this decision."
+        )
+
     return f"""
 You are the decision component of PIOS, a Personal Intelligence Operating
 System.
@@ -127,13 +160,11 @@ User message:
 Project resolution:
 {project_resolution}
 
-NEW information extracted FROM this message:
-{extraction.updates}
+{new_information}
 
 IMPORTANT ARCHITECTURE RULE:
 
-The Context Service may persist the extracted updates before the Decision
-Engine executes.
+{persistence_note}
 
 However, `current_context` supplied to this Decision Engine represents the
 state BEFORE the current message's updates.
@@ -142,8 +173,7 @@ Therefore, use `current_context` to determine what already existed before
 this message, and use `extraction` to determine what was newly introduced
 by this message.
 
-Existing project activity updates are also already processed
-before the Decision Engine runs.
+{activity_note}
 
 Therefore, the Decision Engine MUST NOT return
 "update_context" as an action.
