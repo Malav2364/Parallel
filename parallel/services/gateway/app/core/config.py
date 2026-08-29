@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     PROJECTS_SERVICE_URL: str
     WORKSPACE_SERVICE_URL: str
     CONTEXT_SERVICE_URL: str
+    GITHUB_SERVICE_URL: str
     LOG_LEVEL: str
     REDIS_URL: str
     FRONTEND_URL: str
