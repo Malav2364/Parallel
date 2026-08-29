@@ -133,6 +133,19 @@ services:
       goals:
         condition: service_started
 
+  github:
+    build:
+      context: ./services/github
+    container_name: parallel-github
+    volumes:
+      - ./services/github:/app
+    environment:
+      DATABASE_URL: postgresql+psycopg://parallel_user:parallel123@postgres:5432/pios_github
+      CONNECTOR_VAULT_KEY: ${CONNECTOR_VAULT_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   gateway:
     build:
       context: ./services/gateway
@@ -151,6 +164,7 @@ services:
       PROJECTS_SERVICE_URL: http://projects:8000/api/v1/projects
       WORKSPACE_SERVICE_URL: http://spaces:8000/api/v1
       CONTEXT_SERVICE_URL: http://context:8000/api/v1/context
+      GITHUB_SERVICE_URL: http://github:8000/api/v1/github
       JWT_SECRET_KEY: development-secret-key-change-me
       JWT_ALGORITHM: HS256
       REDIS_URL: redis://redis:6379
@@ -166,6 +180,8 @@ services:
       context:
         condition: service_started
       goals:
+        condition: service_started
+      github:
         condition: service_started
       redis:
         condition: service_healthy

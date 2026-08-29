@@ -5,4 +5,5 @@ ROUTES = {
     "projects": settings.PROJECTS_SERVICE_URL,
     "workspace": settings.WORKSPACE_SERVICE_URL,
     "context": settings.CONTEXT_SERVICE_URL,
+    "github": settings.GITHUB_SERVICE_URL,
 }
