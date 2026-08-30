@@ -72,6 +72,13 @@ $services = @(
         Type = "api"
     },
     @{
+        Name = "Github"
+        Path = Join-Path $root "services\github"
+        Port = 8009
+        App = "app.main:app"
+        Type = "api"
+    },
+    @{
         Name = "ReminderWorker"
         Path = Join-Path $root "services\reminders"
         Port = $null

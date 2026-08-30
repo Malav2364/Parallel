@@ -1,9 +1,0 @@
-INFO:     Will watch for changes in these directories: ['D:\\parallel\\parallel\\services\\spaces']
-INFO:     Uvicorn running on http://127.0.0.1:8003 (Press CTRL+C to quit)
-INFO:     Started reloader process [2020] using StatReload
-INFO:     Started server process [3540]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     127.0.0.1:63543 - "GET /api/v1/spaces HTTP/1.1" 200 OK
-INFO:     127.0.0.1:63543 - "POST /api/v1/spaces HTTP/1.1" 201 Created
-INFO:     127.0.0.1:63543 - "POST /api/v1/spaces/e0d66cfc-6e79-4f58-9a02-61fb6e210866/projects HTTP/1.1" 200 OK
