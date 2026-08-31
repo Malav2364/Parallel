@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -51,3 +53,32 @@ class SignalRepository:
 
         statement = statement.order_by(GithubSignal.synced_at.desc())
         return list(self.db.scalars(statement).all())
+
+    def list_unnotified(
+        self,
+        user_id: str,
+        kind: str,
+    ) -> list[GithubSignal]:
+        statement = (
+            select(GithubSignal)
+            .where(
+                GithubSignal.user_id == user_id,
+                GithubSignal.kind == kind,
+                GithubSignal.notified_at.is_(None),
+            )
+            .order_by(GithubSignal.synced_at.desc())
+        )
+        return list(self.db.scalars(statement).all())
+
+    def mark_notified(
+        self,
+        signal_ids: list[str],
+        now: datetime,
+    ) -> None:
+        if not signal_ids:
+            return
+
+        statement = select(GithubSignal).where(GithubSignal.id.in_(signal_ids))
+        for signal in self.db.scalars(statement).all():
+            signal.notified_at = now
+        self.db.commit()

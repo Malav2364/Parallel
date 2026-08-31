@@ -4,3 +4,4 @@ SELECT 'CREATE DATABASE projects_db' WHERE NOT EXISTS (SELECT FROM pg_database W
 SELECT 'CREATE DATABASE pios_workspace' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'pios_workspace')\gexec
 SELECT 'CREATE DATABASE pios_goals' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'pios_goals')\gexec
 SELECT 'CREATE DATABASE pios_github' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'pios_github')\gexec
+SELECT 'CREATE DATABASE pios_notifications' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'pios_notifications')\gexec

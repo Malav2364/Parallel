@@ -55,3 +55,9 @@ class TokenRepository:
         if existing is not None:
             self.db.delete(existing)
             self.db.commit()
+
+    def list_user_ids(self, provider: str = "github") -> list[str]:
+        statement = select(ConnectorToken.user_id).where(
+            ConnectorToken.provider == provider
+        )
+        return list(self.db.scalars(statement).all())
