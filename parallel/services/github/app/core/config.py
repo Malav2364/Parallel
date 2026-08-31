@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     DATABASE_URL: str
     CONNECTOR_VAULT_KEY: str = ""
+    NOTIFICATIONS_SERVICE_URL: str = ""
+    WATCHER_POLL_INTERVAL: int = 300
 
     model_config = SettingsConfigDict(
         env_file=".env",

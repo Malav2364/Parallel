@@ -43,3 +43,7 @@ class GithubSignal(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )

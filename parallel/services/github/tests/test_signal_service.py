@@ -89,3 +89,24 @@ def test_resync_dedupes_on_external_id():
     rows = session.scalars(select(GithubSignal)).all()
     assert len(rows) == 1
     assert rows[0].payload["title"] == "PR 1 (updated)"
+
+
+def test_list_unnotified_and_mark_notified():
+    from datetime import datetime, timezone
+
+    session = _memory_session()
+    repository = SignalRepository(session)
+
+    signal, _ = repository.upsert(
+        user_id="user-1",
+        kind="review_request",
+        external_id="https://github.com/acme/app/pull/1",
+        payload={"title": "PR 1"},
+    )
+
+    pending = repository.list_unnotified("user-1", "review_request")
+    assert [s.id for s in pending] == [signal.id]
+
+    repository.mark_notified([signal.id], datetime.now(timezone.utc))
+
+    assert repository.list_unnotified("user-1", "review_request") == []
