@@ -1,23 +1,31 @@
 from fastapi import APIRouter, Depends, Header
 import copy
+
+import httpx
+
 from app.api.deps import (
     get_action_executor,
     get_context_decision_engine,
     get_context_extractor,
     get_context_service,
+    get_github_client,
     get_project_activity_extractor,
     get_project_resolver,
     get_projects_client,
     get_semantic_project_resolver,
     get_understanding_engine,
 )
+from app.briefing.compose import build_briefing
+from app.clients.github_client import GithubClient
 from app.clients.projects_client import ProjectsClient
+from app.core.logger import logger
 from app.nlu.compose import with_message
 from app.nlu.confirmation import clarification_prompt, confirmation_prompt
 from app.nlu.mapping import to_decision
 from app.nlu.rules import merge_answer, propose
 from app.nlu.schemas import ProposedAction
 from app.schemas import (
+    BriefingResponse,
     ContextAnalyzeRequest,
     ContextDecision,
     ContextExtractRequest,
@@ -87,6 +95,28 @@ def get_context_changes(
     service: ContextService = Depends(get_context_service),
 ):
     return service.list_changes(x_user_id)
+
+
+@router.get("/briefing", response_model=BriefingResponse)
+async def get_briefing(
+    x_user_id: str = Header(...),
+    github: GithubClient = Depends(get_github_client),
+) -> BriefingResponse:
+    try:
+        signals = await github.list_signals(x_user_id)
+        # Only pay the extra /status round trip when there are no signals, to
+        # tell "not connected" apart from "connected but all caught up".
+        connected = (
+            True
+            if signals
+            else (await github.get_status(x_user_id)).get("connected", False)
+        )
+    except httpx.HTTPError:
+        # A connector being down must not 500 the twin. Degrade to a neutral,
+        # not-connected briefing (never silently wrong: connected=False).
+        logger.warning("GitHub briefing unavailable for user %s", x_user_id)
+        return BriefingResponse(**build_briefing(signals=[], connected=False))
+    return BriefingResponse(**build_briefing(signals=signals, connected=connected))
 
 
 @router.post("/extract", response_model=ContextExtraction)

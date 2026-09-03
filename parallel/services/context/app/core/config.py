@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     PROJECTS_SERVICE_URL: str
     GOALS_SERVICE_URL: str
     REMINDERS_SERVICE_URL: str
+    GITHUB_SERVICE_URL: str = "http://github:8000/api/v1/github"
     GEMINI_API_KEY: str
     CONTEXT_MODEL: str
 

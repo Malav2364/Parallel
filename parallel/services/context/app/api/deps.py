@@ -7,6 +7,7 @@ from app.clients.goals_client import GoalsClient
 from app.clients.projects_client import ProjectsClient
 from app.clients.workspace_client import WorkspaceClient
 from app.clients.embeddings_client import EmbeddingsClient
+from app.clients.github_client import GithubClient
 from app.core.config import settings
 from app.db.database import get_db
 from app.repositories import ContextRepository, ProjectEmbeddingRepository
@@ -79,6 +80,12 @@ def get_workspace_client(
     client: httpx.AsyncClient = Depends(get_http_client),
 ) -> WorkspaceClient:
     return WorkspaceClient(client)
+
+
+def get_github_client(
+    client: httpx.AsyncClient = Depends(get_http_client),
+) -> GithubClient:
+    return GithubClient(client)
 
 
 def get_project_activity_extractor() -> ProjectActivityExtractor:
