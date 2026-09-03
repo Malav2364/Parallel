@@ -126,11 +126,14 @@ services:
       APP_NAME: Parallel Context Service
       APP_VERSION: 1.0.0
       GOALS_SERVICE_URL: http://goals:8000/api/v1
+      GITHUB_SERVICE_URL: http://github:8000/api/v1/github
       LOG_LEVEL: INFO
     depends_on:
       postgres:
         condition: service_healthy
       goals:
+        condition: service_started
+      github:
         condition: service_started
 
   notifications:
