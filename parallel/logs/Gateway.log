@@ -1,0 +1,55 @@
+INFO:     Will watch for changes in these directories: ['D:\\parallel\\parallel\\services\\gateway']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [12464] using StatReload
+INFO:     Started server process [1280]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+2026-09-03 19:35:19,719 | INFO | gateway | [0ecf1e32-432c-438c-92a5-094d129ae81d] anonymous POST -> http://localhost:8001/api/v1/auth/login
+INFO:     127.0.0.1:19075 - "GET /api/context/briefing HTTP/1.1" 401 Unauthorized
+2026-09-03 19:35:22,826 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/login "HTTP/1.1 401 Unauthorized"
+INFO:     127.0.0.1:22254 - "POST /api/identity/auth/login HTTP/1.1" 401 Unauthorized
+2026-09-03 19:35:35,188 | INFO | gateway | [f6c2a097-56d8-4c5f-b66a-3f4ad6ce86e8] anonymous POST -> http://localhost:8001/api/v1/auth/login
+2026-09-03 19:35:35,471 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/login "HTTP/1.1 401 Unauthorized"
+INFO:     127.0.0.1:19072 - "POST /api/identity/auth/login HTTP/1.1" 401 Unauthorized
+2026-09-03 19:35:57,544 | INFO | gateway | [9cb18150-84b6-4640-ba96-e57203ac1818] anonymous POST -> http://localhost:8001/api/v1/auth/login
+2026-09-03 19:35:57,824 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/login "HTTP/1.1 401 Unauthorized"
+INFO:     127.0.0.1:10251 - "POST /api/identity/auth/login HTTP/1.1" 401 Unauthorized
+2026-09-03 19:36:06,566 | INFO | gateway | [7587ce93-f01d-4d4d-871a-875c3bf1de83] anonymous POST -> http://localhost:8001/api/v1/auth/login
+2026-09-03 19:36:06,856 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/login "HTTP/1.1 401 Unauthorized"
+INFO:     127.0.0.1:56174 - "POST /api/identity/auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:55137 - "OPTIONS /api/context/briefing HTTP/1.1" 200 OK
+2026-09-03 19:38:34,866 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 401 Unauthorized"
+INFO:     127.0.0.1:55137 - "GET /api/context/briefing HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:55137 - "OPTIONS /api/identity/auth/refresh HTTP/1.1" 200 OK
+2026-09-03 19:38:34,879 | INFO | gateway | [3ee5ba90-f1c0-48bf-9e0d-b02b86c9fb31] anonymous POST -> http://localhost:8001/api/v1/auth/refresh
+2026-09-03 19:38:34,890 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/refresh "HTTP/1.1 401 Unauthorized"
+INFO:     127.0.0.1:37912 - "POST /api/identity/auth/refresh HTTP/1.1" 401 Unauthorized
+2026-09-03 19:38:46,579 | INFO | gateway | [4cc3f7e1-f3ad-4c0d-99f3-03b8095e5688] anonymous POST -> http://localhost:8001/api/v1/auth/login
+2026-09-03 19:38:47,631 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/login "HTTP/1.1 401 Unauthorized"
+INFO:     127.0.0.1:63230 - "POST /api/identity/auth/login HTTP/1.1" 401 Unauthorized
+2026-09-03 19:38:57,392 | INFO | gateway | [774e30e4-b212-40a7-9db6-d2b32be84893] anonymous POST -> http://localhost:8001/api/v1/auth/login
+2026-09-03 19:38:57,920 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/login "HTTP/1.1 401 Unauthorized"
+INFO:     127.0.0.1:50420 - "POST /api/identity/auth/login HTTP/1.1" 401 Unauthorized
+2026-09-03 19:39:01,793 | INFO | gateway | [4eee5d43-9192-43a7-8207-09afb572d7c2] anonymous POST -> http://localhost:8001/api/v1/auth/login
+2026-09-03 19:39:02,068 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/login "HTTP/1.1 401 Unauthorized"
+INFO:     127.0.0.1:50420 - "POST /api/identity/auth/login HTTP/1.1" 401 Unauthorized
+2026-09-03 19:41:47,393 | INFO | gateway | [3ea3afda-7d87-4990-814c-11c187d59185] anonymous POST -> http://localhost:8001/api/v1/auth/login
+2026-09-03 19:41:48,056 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/login "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:42287 - "POST /api/identity/auth/login HTTP/1.1" 200 OK
+2026-09-03 19:41:48,905 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-09-03 19:41:48,916 | INFO | gateway | [a3cb60cc-faa3-4fed-9829-c209f694485e] malavp024@gmail.com GET -> http://localhost:8004/api/v1/context/briefing
+2026-09-03 19:41:57,813 | INFO | httpx | HTTP Request: GET http://localhost:8004/api/v1/context/briefing "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:42287 - "GET /api/context/briefing HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1188 - "OPTIONS /api/context/process HTTP/1.1" 200 OK
+2026-09-03 19:42:22,443 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-09-03 19:42:22,446 | INFO | gateway | [a1866e57-bd35-4f53-bb65-6cebe736bfb5] malavp024@gmail.com POST -> http://localhost:8004/api/v1/context/process
+2026-09-03 19:42:41,410 | INFO | httpx | HTTP Request: POST http://localhost:8004/api/v1/context/process "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:1188 - "POST /api/context/process HTTP/1.1" 200 OK
+2026-09-03 19:42:53,259 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-09-03 19:42:53,262 | INFO | gateway | [259004ec-e6c4-4705-84a3-df979a96cf2d] malavp024@gmail.com POST -> http://localhost:8004/api/v1/context/process
+2026-09-03 19:43:04,479 | INFO | httpx | HTTP Request: POST http://localhost:8004/api/v1/context/process "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:37848 - "POST /api/context/process HTTP/1.1" 200 OK
+2026-09-03 19:43:09,115 | INFO | httpx | HTTP Request: POST http://localhost:8001/api/v1/auth/validate-token "HTTP/1.1 200 OK"
+2026-09-03 19:43:09,119 | INFO | gateway | [4f10c0e8-37de-4f1b-8d51-36f75f743849] malavp024@gmail.com GET -> http://localhost:8004/api/v1/context/briefing
+2026-09-03 19:43:09,414 | INFO | httpx | HTTP Request: GET http://localhost:8004/api/v1/context/briefing "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:37848 - "GET /api/context/briefing HTTP/1.1" 200 OK

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Brand } from "@/components/brand";
+import { GithubBriefingCard } from "@/components/github-briefing-card";
 import { ShimmerText } from "@/components/shimmer-text";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,9 @@ function AssistantMark() {
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {
   return (
     <div className="flex animate-in fade-in flex-col items-center gap-6 py-16 text-center duration-500">
+      <div className="w-full max-w-sm">
+        <GithubBriefingCard />
+      </div>
       <span className="flex size-14 items-center justify-center rounded-3xl bg-primary text-primary-foreground shadow-sm">
         <Sun className="size-7" strokeWidth={2.25} />
       </span>
