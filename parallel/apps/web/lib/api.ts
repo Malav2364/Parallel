@@ -179,3 +179,34 @@ export async function processMessage(
   if (!res.ok) throw await toError(res);
   return res.json() as Promise<ProcessResponse>;
 }
+
+// A single pull request in a briefing. Any field may be null upstream.
+export interface BriefingItem {
+  repo: string | null;
+  number: number | null;
+  title: string | null;
+  url: string | null;
+}
+
+export interface BriefingResponse {
+  connected: boolean;
+  review_requests: number;
+  my_open_prs: number;
+  message: string;
+  review_requests_items: BriefingItem[];
+  my_pr_items: BriefingItem[];
+}
+
+// The twin's GitHub briefing. Like processMessage, user_id is derived by the
+// gateway from the Bearer token. A down connector still returns 200 with
+// connected:false, so callers never need to treat that as an error.
+export async function getBriefing(
+  accessToken: string,
+): Promise<BriefingResponse> {
+  const res = await fetch(`${GATEWAY_URL}/api/context/briefing`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw await toError(res);
+  return res.json() as Promise<BriefingResponse>;
+}

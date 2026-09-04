@@ -14,11 +14,13 @@ import {
 
 import {
   ApiError,
+  getBriefing as apiGetBriefing,
   login as apiLogin,
   logout as apiLogout,
   processMessage,
   refresh as apiRefresh,
   register as apiRegister,
+  type BriefingResponse,
   type PendingAction,
   type ProcessResponse,
   type RegisterInput,
@@ -44,6 +46,7 @@ interface AuthContextValue {
     message: string,
     pendingAction: PendingAction | null,
   ) => Promise<ProcessResponse>;
+  getBriefing: () => Promise<BriefingResponse>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -176,6 +179,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [clear, persist, router, user],
   );
 
+  const getBriefing = useCallback(async (): Promise<BriefingResponse> => {
+    const access = tokensRef.current.access;
+    if (!access) {
+      clear();
+      router.push("/login");
+      throw new ApiError("Not authenticated", 401);
+    }
+    try {
+      return await apiGetBriefing(access);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        const refreshToken = tokensRef.current.refresh;
+        if (refreshToken) {
+          try {
+            const tokens = await apiRefresh(refreshToken);
+            const email =
+              user?.email ?? decodeEmailFromToken(tokens.access_token) ?? "";
+            persist(tokens.access_token, tokens.refresh_token, email);
+            return await apiGetBriefing(tokens.access_token);
+          } catch {
+            // Refresh failed — fall through to logout.
+          }
+        }
+        clear();
+        router.push("/login");
+      }
+      throw err;
+    }
+  }, [clear, persist, router, user]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -185,8 +218,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       logout,
       sendMessage,
+      getBriefing,
     }),
-    [user, isLoading, login, register, logout, sendMessage],
+    [user, isLoading, login, register, logout, sendMessage, getBriefing],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
