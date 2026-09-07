@@ -21,6 +21,8 @@ from app.clients.projects_client import ProjectsClient
 from app.core.logger import logger
 from app.nlu.compose import with_message
 from app.nlu.confirmation import clarification_prompt, confirmation_prompt
+from app.nlu.github_intent import is_github_query
+from app.nlu.github_reply import compose_github_reply
 from app.nlu.mapping import to_decision
 from app.nlu.rules import merge_answer, propose
 from app.nlu.schemas import ProposedAction
@@ -119,6 +121,28 @@ async def get_briefing(
     return BriefingResponse(**build_briefing(signals=signals, connected=connected))
 
 
+async def _github_query_reply(github: GithubClient, user_id: str) -> str:
+    """Read live GitHub signals and compose a chat answer, degrading safely.
+
+    Mirrors /briefing's connector-fault handling (never 500 the conversation):
+    a down connector or an unlinked user resolves to connected=False, which
+    compose_github_reply renders as an honest "not connected" line rather than a
+    fabricated all-caught-up.
+    """
+
+    try:
+        signals = await github.list_signals(user_id)
+        connected = (
+            True
+            if signals
+            else (await github.get_status(user_id)).get("connected", False)
+        )
+    except httpx.HTTPError:
+        logger.warning("GitHub query unavailable for user %s", user_id)
+        return compose_github_reply(signals=[], connected=False)
+    return compose_github_reply(signals=signals, connected=connected)
+
+
 @router.post("/extract", response_model=ContextExtraction)
 def extract_context(
     request: ContextExtractRequest,
@@ -188,6 +212,9 @@ async def process_context(
     ),
     semantic_resolver: SemanticProjectResolver = Depends(
         get_semantic_project_resolver,
+    ),
+    github: GithubClient = Depends(
+        get_github_client,
     ),
 ):
     if request.pending_action is not None:
@@ -262,13 +289,38 @@ async def process_context(
             }
         )
 
+    proposal = propose(request.message)
+
+    if proposal is None and is_github_query(request.message):
+        # No create-intent fired and this is a read-only GitHub question
+        # ("what's waiting on my review?"). Answer from live signals
+        # deterministically -- no LLM, no context write. Gating on the empty
+        # proposal lets a create phrasing that names a PR ("remind me to open a
+        # pull request") be claimed by the reminder proposer first. Degrades
+        # like /briefing: a down connector never 500s, it reports not-connected.
+        reply = await _github_query_reply(github, x_user_id)
+        return with_message(
+            {
+                "type": "github_query",
+                "extraction": None,
+                "context_update": None,
+                "resolution": None,
+                "resolution_error": None,
+                "activity": None,
+                "activity_project": None,
+                "decision": None,
+                "execution": None,
+                "tier": "rules",
+                "pending_action": None,
+                "prompt": reply,
+            }
+        )
+
     context = context_service.get_context(
         x_user_id,
     )
 
     original_context = copy.deepcopy(context.context)
-
-    proposal = propose(request.message)
 
     if proposal is not None:
         # Tier-1 paths never reach the understanding engine, so they still need

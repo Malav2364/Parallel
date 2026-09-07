@@ -7,6 +7,7 @@ stand-ins that raise if called, so a green fast-path test proves those Gemini
 stages were skipped. A non-reminder message falls through and the engine runs.
 """
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -14,6 +15,7 @@ from app.api.deps import (
     get_action_executor,
     get_context_extractor,
     get_context_service,
+    get_github_client,
     get_project_resolver,
     get_projects_client,
     get_semantic_project_resolver,
@@ -491,6 +493,139 @@ def test_semantic_miss_falls_through_to_gemini() -> None:
     assert understanding.called is True
     # A miss hands the engine no project (no activity to report).
     assert understanding.projects[-1] is None
+
+
+class FakeGithubClient:
+    """Records whether /status was consulted; mirrors the briefing test fake."""
+
+    def __init__(self, signals=None, status=None, raise_error=False) -> None:
+        self._signals = signals or []
+        self._status = status or {}
+        self._raise = raise_error
+        self.status_calls = 0
+
+    async def list_signals(self, user_id, unread=False):
+        if self._raise:
+            raise httpx.HTTPError("connector down")
+        return self._signals
+
+    async def get_status(self, user_id):
+        self.status_calls += 1
+        return self._status
+
+
+def _all_stages_raise() -> None:
+    """A GitHub query answers from signals alone -- no cascade, no LLM."""
+
+    app.dependency_overrides[get_context_service] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_action_executor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_semantic_project_resolver] = lambda: RaiseIfCalled()
+
+
+def test_github_query_answers_from_signals_without_cascade() -> None:
+    fake = FakeGithubClient(
+        signals=[
+            {
+                "kind": "review_request",
+                "payload": {"repo": "me/api", "number": 12, "title": "Fix auth"},
+            },
+        ],
+    )
+    _all_stages_raise()
+    app.dependency_overrides[get_github_client] = lambda: fake
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={"message": "what's waiting on my review?"},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["type"] == "github_query"
+    assert body["tier"] == "rules"
+    assert body["decision"] is None
+    assert body["execution"] is None
+    assert "me/api #12 — Fix auth" in body["message"]
+    # A read-only lookup never writes durable context.
+    assert body["context_update"] is None
+
+
+def test_github_query_degrades_when_connector_down_never_500() -> None:
+    fake = FakeGithubClient(raise_error=True)
+    _all_stages_raise()
+    app.dependency_overrides[get_github_client] = lambda: fake
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={"message": "any PRs waiting on my review?"},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["type"] == "github_query"
+    assert "isn't connected" in body["message"]
+
+
+def test_github_query_caught_up_when_connected_no_signals() -> None:
+    fake = FakeGithubClient(signals=[], status={"connected": True})
+    _all_stages_raise()
+    app.dependency_overrides[get_github_client] = lambda: fake
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={"message": "any open pull requests?"},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["type"] == "github_query"
+    assert "caught up" in body["message"]
+    assert fake.status_calls == 1
+
+
+def test_create_intent_naming_a_pr_is_not_hijacked_by_github_query() -> None:
+    """A create phrasing that happens to contain a GitHub anchor ("remind me to
+    open a pull request") must be claimed by the reminder proposer, not the
+    read-only lookup. The recogniser alone can't split those (it fires on both);
+    precedence lives here -- the endpoint only consults GitHub when propose()
+    finds no create-intent. The GitHub client raises if touched to prove it.
+    """
+
+    executor = RecordingExecutor()
+
+    app.dependency_overrides[get_context_service] = lambda: FakeContextService()
+    app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+    # The GitHub client must NOT be consulted: a create-intent owns this turn.
+    app.dependency_overrides[get_github_client] = lambda: RaiseIfCalled()
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={"message": "remind me to open a pull request"},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["type"] != "github_query"
+    assert body["tier"] == "rules"
+    # A subject-only reminder is MEDIUM: it asks for the time rather than
+    # firing the GitHub lookup.
+    assert body["pending_action"]["action"] == "create_reminder"
 
 
 def test_confirmation_answer_executes_deterministically() -> None:
