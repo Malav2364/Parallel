@@ -120,6 +120,7 @@ def get_action_executor(
     goals_client: GoalsClient = Depends(get_goals_client),
     habits_client: HabitsClient = Depends(get_habits_client),
     reminders_client: RemindersClient = Depends(get_reminders_client),
+    github_client: GithubClient = Depends(get_github_client),
 ) -> ActionExecutor:
     return ActionExecutor(
         projects_client,
@@ -127,4 +128,5 @@ def get_action_executor(
         goals_client,
         habits_client,
         reminders_client,
+        github_client,
     )

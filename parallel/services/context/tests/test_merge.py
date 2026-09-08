@@ -8,7 +8,9 @@ proposal comes back HIGH; an answer that still doesn't resolve stays MEDIUM.
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from app.nlu.rules import merge_answer
+import pytest
+
+from app.nlu.rules import _is_affirmative, merge_answer
 from app.nlu.schemas import ProposedAction
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -133,3 +135,88 @@ def test_clarification_unreadable_answer_stays_low() -> None:
     assert merged.action == "none"
     assert merged.band == "low"
     assert "candidates" in merged.slots
+
+
+@pytest.mark.parametrize(
+    "answer, verdict",
+    [
+        ("yes", True),
+        ("post it", True),
+        ("lgtm", True),
+        ("no", False),
+        ("cancel", False),
+        ("don't post it", False),
+        # A negative word anywhere overrides an affirmative one in the same reply.
+        ("no, go ahead", False),
+        # Neither yes nor no -> undecided, so the caller re-asks.
+        ("maybe later", None),
+        ("hmm", None),
+    ],
+)
+def test_is_affirmative_reads_yes_no(answer: str, verdict: bool | None) -> None:
+    assert _is_affirmative(answer) is verdict
+
+
+def test_github_stage_a_fills_repo_and_stays_medium() -> None:
+    # No repo yet: the answer names the target, but a public write still confirms.
+    pending = _pending(
+        "post_github_comment",
+        {"number": 42, "body": "LGTM"},
+        reason="rule:github_comment",
+    )
+
+    merged = merge_answer(pending, "acme/app#42", now=NOW)
+
+    assert merged.action == "post_github_comment"
+    assert merged.band == "medium"
+    assert not merged.is_executable
+    assert merged.slots["repo"] == "acme/app"
+    assert merged.slots["number"] == 42
+    assert merged.slots["body"] == "LGTM"
+    assert merged.reason == "rule:github_comment"
+
+
+def test_github_stage_b_yes_confirms_to_high() -> None:
+    pending = _pending(
+        "post_github_comment",
+        {"repo": "acme/app", "number": 42, "body": "LGTM"},
+    )
+
+    merged = merge_answer(pending, "yes, post it", now=NOW)
+
+    assert merged.action == "post_github_comment"
+    assert merged.band == "high"
+    assert merged.is_executable
+    assert merged.reason == "post_github_comment confirmed"
+    assert merged.slots == {"repo": "acme/app", "number": 42, "body": "LGTM"}
+
+
+def test_github_stage_b_no_declines_terminally() -> None:
+    pending = _pending(
+        "post_github_comment",
+        {"repo": "acme/app", "number": 42, "body": "LGTM"},
+    )
+
+    merged = merge_answer(pending, "no, cancel that", now=NOW)
+
+    assert merged.action == "none"
+    assert not merged.is_executable
+    assert merged.reason == "post_github_comment declined"
+    # Slots survive the decline so the target is still named if we need it.
+    assert merged.slots["repo"] == "acme/app"
+    assert merged.slots["body"] == "LGTM"
+
+
+def test_github_stage_b_unreadable_answer_stays_medium() -> None:
+    pending = _pending(
+        "post_github_comment",
+        {"repo": "acme/app", "number": 42, "body": "LGTM"},
+        reason="rule:github_comment",
+    )
+
+    merged = merge_answer(pending, "maybe later", now=NOW)
+
+    assert merged.action == "post_github_comment"
+    assert merged.band == "medium"
+    assert not merged.is_executable
+    assert merged.reason == "rule:github_comment"

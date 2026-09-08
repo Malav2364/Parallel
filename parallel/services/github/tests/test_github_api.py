@@ -2,9 +2,17 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.api.deps import get_signal_service, get_token_service
+from app.api.deps import (
+    get_comment_service,
+    get_signal_service,
+    get_token_service,
+)
 from app.main import app
-from app.services.errors import InvalidTokenError, NotConnectedError
+from app.services.errors import (
+    GithubWriteError,
+    InvalidTokenError,
+    NotConnectedError,
+)
 
 HEADERS = {"X-User-Id": "user-1"}
 
@@ -103,3 +111,61 @@ def test_list_signals_passes_unread_filter(client):
     assert response.status_code == 200
     assert response.json() == []
     fake.list_signals.assert_called_once_with("user-1", unread_only=True)
+
+
+def test_create_comment_returns_created_comment(client):
+    fake = Mock()
+    fake.post_comment.return_value = {
+        "id": 555,
+        "html_url": "https://github.com/acme/app/pull/42#issuecomment-555",
+        "body": "LGTM",
+    }
+    app.dependency_overrides[get_comment_service] = lambda: fake
+
+    response = client.post(
+        "/api/v1/github/comments",
+        headers={**HEADERS, "Idempotency-Key": "abc123"},
+        json={"repo": "acme/app", "number": 42, "body": "LGTM"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": 555,
+        "url": "https://github.com/acme/app/pull/42#issuecomment-555",
+        "body": "LGTM",
+    }
+    fake.post_comment.assert_called_once_with(
+        user_id="user-1",
+        repo="acme/app",
+        number=42,
+        body="LGTM",
+        idempotency_key="abc123",
+    )
+
+
+def test_create_comment_requires_connection(client):
+    fake = Mock()
+    fake.post_comment.side_effect = NotConnectedError()
+    app.dependency_overrides[get_comment_service] = lambda: fake
+
+    response = client.post(
+        "/api/v1/github/comments",
+        headers=HEADERS,
+        json={"repo": "acme/app", "number": 42, "body": "LGTM"},
+    )
+
+    assert response.status_code == 409
+
+
+def test_create_comment_surfaces_write_failure_as_502(client):
+    fake = Mock()
+    fake.post_comment.side_effect = GithubWriteError()
+    app.dependency_overrides[get_comment_service] = lambda: fake
+
+    response = client.post(
+        "/api/v1/github/comments",
+        headers=HEADERS,
+        json={"repo": "acme/app", "number": 42, "body": "LGTM"},
+    )
+
+    assert response.status_code == 502

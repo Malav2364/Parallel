@@ -18,6 +18,7 @@ ActionType = Literal[
     "create_project",
     "suggest_space",
     "create_reminder",
+    "post_github_comment",
 ]
 
 
@@ -52,6 +53,11 @@ class ContextDecision(BaseModel):
     reminder_time: str | None = None
     reminder_recurrence: str | None = None
     reminder_status: str | None = "pending"
+
+    # GitHub
+    github_repo: str | None = None
+    github_number: int | None = None
+    github_comment_body: str | None = None
 
 
 class ContextSignal(BaseModel):

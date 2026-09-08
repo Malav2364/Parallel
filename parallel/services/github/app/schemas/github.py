@@ -28,3 +28,16 @@ class SignalResponse(BaseModel):
     created_at: datetime
     synced_at: datetime
     read_at: datetime | None
+
+
+class CommentCreateRequest(BaseModel):
+    repo: str = Field(min_length=1)
+    number: int
+    body: str = Field(min_length=1)
+
+
+class CommentResponse(BaseModel):
+    id: int
+    url: str
+    body: str
+

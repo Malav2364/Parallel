@@ -31,6 +31,14 @@ def confirmation_prompt(proposal: ProposedAction) -> str:
     if proposal.action == "create_goal":
         return "What goal would you like to set?"
 
+    if proposal.action == "post_github_comment":
+        number = slots.get("number")
+        repo = slots.get("repo")
+        if not repo:
+            return f"Which repo is PR #{number} in? Tell me like acme/app#{number}."
+        body = slots.get("body") or ""
+        return f'Post this comment on {repo} #{number}?\n\n"{body}"'
+
     return "Could you give me a bit more detail?"
 
 

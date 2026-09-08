@@ -29,6 +29,15 @@ def to_decision(proposal: ProposedAction) -> ContextDecision:
             habit_time_window=slots.get("time_window"),
         )
 
+    if proposal.action == "post_github_comment":
+        return ContextDecision(
+            action=proposal.action,
+            reason=reason,
+            github_repo=slots.get("repo"),
+            github_number=slots.get("number"),
+            github_comment_body=slots.get("body"),
+        )
+
     return ContextDecision(
         action=proposal.action,
         reason=reason,

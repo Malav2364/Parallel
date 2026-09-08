@@ -143,6 +143,45 @@ async def _github_query_reply(github: GithubClient, user_id: str) -> str:
     return compose_github_reply(signals=signals, connected=connected)
 
 
+async def _resolve_comment_repo(
+    github: GithubClient,
+    user_id: str,
+    proposal: ProposedAction,
+) -> ProposedAction:
+    """Fill a comment proposal's missing ``repo`` from the user's synced PRs.
+
+    The user names a bare "PR 42"; we match it against their GitHub signals to
+    find the repo. Exactly one distinct match resolves it; 0 or >1 leaves the
+    proposal unchanged (the confirmation then asks "which repo?" rather than
+    guessing). Degrades like /briefing: a down connector never 500s the
+    conversation, it just leaves the repo unresolved.
+    """
+
+    number = proposal.slots.get("number")
+    if number is None:
+        return proposal
+
+    try:
+        signals = await github.list_signals(user_id)
+    except httpx.HTTPError:
+        logger.warning("GitHub repo resolution unavailable for user %s", user_id)
+        return proposal
+
+    repos = {
+        (signal.get("payload") or {}).get("repo")
+        for signal in signals
+        if (signal.get("payload") or {}).get("number") == number
+    }
+    repos.discard(None)
+
+    if len(repos) != 1:
+        return proposal
+
+    return proposal.model_copy(
+        update={"slots": {**proposal.slots, "repo": repos.pop()}},
+    )
+
+
 @router.post("/extract", response_model=ContextExtraction)
 def extract_context(
     request: ContextExtractRequest,
@@ -252,6 +291,26 @@ async def process_context(
                 }
             )
 
+        if merged.action == "none" and merged.reason == "post_github_comment declined":
+            # The user answered "no" to a public write. Terminal: clear the
+            # pending action and acknowledge -- never re-ask, never post.
+            return with_message(
+                {
+                    "type": "context_only",
+                    "extraction": None,
+                    "context_update": None,
+                    "resolution": None,
+                    "resolution_error": None,
+                    "activity": None,
+                    "activity_project": None,
+                    "decision": None,
+                    "execution": None,
+                    "tier": "rules",
+                    "pending_action": None,
+                    "prompt": "No problem — I won't post that comment.",
+                }
+            )
+
         # Still incomplete. A MEDIUM proposal needs one more slot (ask for it);
         # a LOW one is still category-ambiguous (ask the user to pick again).
         if merged.band == "medium":
@@ -315,6 +374,16 @@ async def process_context(
                 "prompt": reply,
             }
         )
+
+    if (
+        proposal is not None
+        and proposal.action == "post_github_comment"
+        and not proposal.slots.get("repo")
+    ):
+        # A bare "comment on PR 42" names no repo. Fill it from the user's synced
+        # PRs so the confirmation can name the target; an unresolved repo (0 or
+        # >1 match) falls through to the MEDIUM branch, which asks which repo.
+        proposal = await _resolve_comment_repo(github, x_user_id, proposal)
 
     context = context_service.get_context(
         x_user_id,

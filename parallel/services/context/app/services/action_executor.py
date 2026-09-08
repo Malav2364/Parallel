@@ -5,6 +5,7 @@ from app.clients.projects_client import ProjectsClient
 from app.clients.workspace_client import WorkspaceClient
 from app.schemas.decision import ContextDecision
 from app.clients.habits_client import HabitsClient
+from app.clients.github_client import GithubClient
 from app.clients.reminders_client import RemindersClient
 from app.services.idempotency import build_key
 from app.services.reminder_datetime import ReminderDateTimeResolver
@@ -20,12 +21,14 @@ class ActionExecutor:
         goals_client: GoalsClient | None = None,
         habits_client: HabitsClient | None = None,
         reminders_client: RemindersClient | None = None,
+        github_client: GithubClient | None = None,
     ) -> None:
         self.projects_client = projects_client
         self.workspace_client = workspace_client
         self.goals_client = goals_client
         self.habits_client = habits_client
         self.reminders_client = reminders_client
+        self.github_client = github_client
 
     async def execute(
         self,
@@ -58,6 +61,12 @@ class ActionExecutor:
 
         if decision.action == "create_reminder":
             return await self._create_reminder(
+                user_id=user_id,
+                decision=decision,
+            )
+
+        if decision.action == "post_github_comment":
+            return await self._post_github_comment(
                 user_id=user_id,
                 decision=decision,
             )
@@ -392,6 +401,81 @@ class ActionExecutor:
             "reminder_created": True,
             "verified": verified is not None,
             "scheduled_for": scheduled_for.isoformat(),
+            "idempotency_key": idempotency_key,
+        }
+
+    async def _post_github_comment(
+        self,
+        user_id: str,
+        decision: ContextDecision,
+    ) -> dict:
+        if self.github_client is None:
+            return {
+                "executed": False,
+                "action": "post_github_comment",
+                "reason": "GitHub client is not configured.",
+            }
+
+        repo = decision.github_repo
+        number = decision.github_number
+        body = decision.github_comment_body
+
+        if not repo:
+            return {
+                "executed": False,
+                "action": "post_github_comment",
+                "reason": "GitHub repo was not provided.",
+            }
+
+        if number is None:
+            return {
+                "executed": False,
+                "action": "post_github_comment",
+                "reason": "GitHub PR number was not provided.",
+            }
+
+        if not body:
+            return {
+                "executed": False,
+                "action": "post_github_comment",
+                "reason": "GitHub comment body was not provided.",
+            }
+
+        idempotency_key = build_key(
+            user_id,
+            "post_github_comment",
+            repo,
+            str(number),
+            body,
+        )
+
+        try:
+            result = await self.github_client.post_comment(
+                user_id=user_id,
+                repo=repo,
+                number=number,
+                body=body,
+                idempotency_key=idempotency_key,
+            )
+
+        except httpx.HTTPError as exc:
+            return {
+                "executed": False,
+                "action": "post_github_comment",
+                "reason": f"GitHub comment request failed: {exc}",
+                "idempotency_key": idempotency_key,
+            }
+
+        # The write endpoint returns the created comment, so the response is
+        # itself the verification -- no separate read-back GET (a documented
+        # deviation from the reminder's read-after-write).
+        verified = bool(result.get("id") or result.get("url"))
+
+        return {
+            "executed": True,
+            "action": "post_github_comment",
+            "comment": result,
+            "verified": verified,
             "idempotency_key": idempotency_key,
         }
 

@@ -30,3 +30,23 @@ class GithubClient:
         )
         response.raise_for_status()
         return response.json()
+
+    async def post_comment(
+        self,
+        user_id: str,
+        repo: str,
+        number: int,
+        body: str,
+        idempotency_key: str | None = None,
+    ) -> dict:
+        headers = {"X-User-Id": user_id}
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        response = await self._client.post(
+            f"{self.base_url}/comments",
+            headers=headers,
+            json={"repo": repo, "number": number, "body": body},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        return response.json()

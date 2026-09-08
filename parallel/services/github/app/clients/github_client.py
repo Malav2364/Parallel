@@ -28,6 +28,23 @@ class GitHubClient:
         response.raise_for_status()
         return response.json()
 
+    def create_issue_comment(
+        self,
+        token: str,
+        repo: str,
+        number: int,
+        body: str,
+    ) -> dict:
+        # A PR is an issue for comment purposes, so this endpoint covers both.
+        response = httpx.post(
+            f"{GITHUB_API}/repos/{repo}/issues/{number}/comments",
+            headers=self._headers(token),
+            json={"body": body},
+            timeout=TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def list_review_requests(self, token: str) -> list[dict]:
         return self._search(
             "is:open is:pr review-requested:@me",

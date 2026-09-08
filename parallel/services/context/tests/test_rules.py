@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.nlu.rules import propose
+from app.nlu.rules import _parse_github_ref, propose, propose_github_comment
 
 IST = ZoneInfo("Asia/Kolkata")
 NOW = datetime(2026, 8, 23, 10, 0, tzinfo=IST)
@@ -211,3 +211,67 @@ def test_ambiguous_recurring_activity_requests_clarification(
     assert proposal.slots["activity"] == activity
     assert proposal.slots["schedule"] == schedule
     assert proposal.slots["candidates"] == ["create_habit", "create_reminder"]
+
+
+@pytest.mark.parametrize(
+    "text, repo, number, body",
+    [
+        ("comment on acme/app#42: LGTM", "acme/app", 42, "LGTM"),
+        ("comment on PR 42 saying nice work", None, 42, "nice work"),
+        ("comment on pull request 7: ship it", None, 7, "ship it"),
+        # A "#99" inside the body must not be mistaken for the PR number.
+        ("comment on PR 42: see #99 for context", None, 42, "see #99 for context"),
+        # Quotes around the body are stripped.
+        ('comment on acme/app#3 saying "fix the typo"', "acme/app", 3, "fix the typo"),
+    ],
+)
+def test_parse_github_ref_extracts_repo_number_body(
+    text: str, repo: str | None, number: int | None, body: str | None
+) -> None:
+    assert _parse_github_ref(text) == (repo, number, body)
+
+
+@pytest.mark.parametrize(
+    "text, number, body, repo",
+    [
+        ("comment on PR 42: LGTM", 42, "LGTM", None),
+        ("comment on acme/app#42 saying nice work", 42, "nice work", "acme/app"),
+    ],
+)
+def test_github_comment_proposes_at_medium(
+    text: str, number: int, body: str, repo: str | None
+) -> None:
+    # A public write must always confirm -- never HIGH, never auto-fires.
+    proposal = propose(text, now=NOW)
+
+    assert proposal is not None
+    assert proposal.action == "post_github_comment"
+    assert proposal.band == "medium"
+    assert not proposal.is_executable
+    assert proposal.slots["number"] == number
+    assert proposal.slots["body"] == body
+    assert proposal.slots.get("repo") == repo
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # No body -> falls through rather than half-firing.
+        "comment on PR 42",
+        # No PR number to target.
+        "comment saying looks good",
+        # No comment verb at all.
+        "post an update on PR 42",
+    ],
+)
+def test_github_comment_declined_when_incomplete(text: str) -> None:
+    assert propose_github_comment(text, now=NOW) is None
+
+
+def test_reminder_wins_over_github_comment() -> None:
+    # propose_github_comment is registered AFTER propose_reminder, so a request
+    # to be reminded *to* comment stays a reminder rather than posting.
+    proposal = propose("remind me to comment on PR 42: LGTM tomorrow at 9am", now=NOW)
+
+    assert proposal is not None
+    assert proposal.action == "create_reminder"

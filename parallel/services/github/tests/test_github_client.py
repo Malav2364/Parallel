@@ -93,3 +93,41 @@ def test_get_authenticated_user_returns_login(monkeypatch):
     monkeypatch.setattr(httpx, "get", fake_get)
 
     assert GitHubClient().get_authenticated_user("ghp_token") == {"login": "octocat"}
+
+
+def test_create_issue_comment_posts_to_issues_endpoint(monkeypatch):
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        return httpx.Response(
+            201,
+            json={"id": 555, "html_url": f"{url}/555", "body": "LGTM"},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    result = GitHubClient().create_issue_comment("ghp_token", "acme/app", 42, "LGTM")
+
+    assert captured["url"].endswith("/repos/acme/app/issues/42/comments")
+    assert captured["headers"]["Authorization"] == "Bearer ghp_token"
+    assert captured["json"] == {"body": "LGTM"}
+    assert result["id"] == 555
+    assert result["body"] == "LGTM"
+
+
+def test_create_issue_comment_raises_on_write_denied(monkeypatch):
+    def fake_post(url, headers=None, json=None, timeout=None):
+        return httpx.Response(
+            403,
+            json={"message": "Resource not accessible by personal access token"},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        GitHubClient().create_issue_comment("scope-poor", "acme/app", 42, "LGTM")

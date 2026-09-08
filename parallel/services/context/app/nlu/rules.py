@@ -313,11 +313,85 @@ def propose_clarification(text, now=None) -> ProposedAction | None:
     )
 
 
+# An explicit intent to *comment* on a PR ("comment on PR 42", "leave a comment").
+_COMMENT_TRIGGER = re.compile(r"\bcomment\b", re.IGNORECASE)
+
+# The comment body: everything after ":" or a "saying"/"says"/"say" lead-in.
+_BODY = re.compile(r"(?::|\b(?:saying|says|say)\b)\s*(.+)$", re.IGNORECASE)
+
+# An "owner/repo" slug (optionally followed by "#42" -- the "#42" is not consumed
+# here, so this matches inside "acme/app#42" too).
+_REPO = re.compile(r"\b([\w][\w.-]*/[\w][\w.-]*)\b")
+
+# A PR number: "acme/app#42", "#42", "PR 42", "PR#42", or "pull request 42".
+_NUMBER = re.compile(
+    r"(?:#|\b(?:pull\s*requests?|prs?)\s*#?\s*)(\d+)",
+    re.IGNORECASE,
+)
+
+
+def _parse_github_ref(text: str) -> tuple[str | None, int | None, str | None]:
+    """Pull a ``(repo, number, body)`` triple out of a comment utterance.
+
+    The body ("... : LGTM" / "... saying LGTM") is split off first, and the repo
+    and number are parsed only from the part *before* it -- so a "#99" inside the
+    comment text can never be mistaken for the target PR number. Any of the three
+    may be ``None`` when absent.
+    """
+
+    body_match = _BODY.search(text)
+    if body_match:
+        body = body_match.group(1).strip().strip("\"'").strip() or None
+        head = text[: body_match.start()]
+    else:
+        body = None
+        head = text
+
+    repo_match = _REPO.search(head)
+    repo = repo_match.group(1) if repo_match else None
+
+    number_match = _NUMBER.search(head)
+    number = int(number_match.group(1)) if number_match else None
+
+    return repo, number, body
+
+
+def propose_github_comment(text, now=None) -> ProposedAction | None:
+    """Propose a ``post_github_comment`` action, or ``None`` if not one.
+
+    Requires a "comment" verb, a resolvable PR number, and an inline body (the
+    text after ":"/"saying"). A bare "comment on PR 42" with no body returns
+    ``None`` so it falls through rather than half-firing. The repo is optional
+    here -- ``/process`` resolves it from the user's synced PRs. **Always
+    MEDIUM**: a public write must confirm, never auto-fire.
+    """
+
+    if not _COMMENT_TRIGGER.search(text):
+        return None
+
+    repo, number, body = _parse_github_ref(text)
+    if number is None or not body:
+        return None
+
+    slots: dict = {"number": number, "body": body}
+    if repo:
+        slots["repo"] = repo
+
+    return ProposedAction(
+        action="post_github_comment",
+        source="rules",
+        confidence=MEDIUM_CONFIDENCE,
+        slots=slots,
+        reason="rule:github_comment",
+    )
+
+
 def propose(text, now=None) -> ProposedAction | None:
     """Run the deterministic rules, returning the first confident match."""
 
     for proposer in (
         propose_reminder,
+        propose_github_comment,
         propose_habit,
         propose_goal,
         propose_clarification,
@@ -382,6 +456,91 @@ def _resolve_clarification(pending: ProposedAction, answer: str) -> ProposedActi
     return pending
 
 
+# Yes/no read on a confirmation reply. Negative has precedence over affirmative
+# (below) so "no, don't post it" declines even though grammar around it varies.
+_AFFIRMATIVE = re.compile(
+    r"\b(?:yes|yep|yeah|yup|sure|ok|okay|confirm|go\s+ahead|do\s+it"
+    r"|post\s+it|send\s+it|please\s+do|sounds?\s+good|looks?\s+good|lgtm)\b",
+    re.IGNORECASE,
+)
+_NEGATIVE = re.compile(
+    r"\b(?:no|nope|nah|cancel|stop|abort|don'?t|do\s+not"
+    r"|never\s*mind|nevermind|forget\s+it)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_affirmative(text: str) -> bool | None:
+    """Read a yes/no from a confirmation reply.
+
+    Negative takes precedence over affirmative -- for a public write, "no, don't
+    post it" must decline even though grammar varies. Returns ``None`` when the
+    reply is neither, so the caller re-asks rather than guessing.
+    """
+
+    if _NEGATIVE.search(text):
+        return False
+    if _AFFIRMATIVE.search(text):
+        return True
+    return None
+
+
+def _merge_github_comment(pending: ProposedAction, answer: str) -> ProposedAction:
+    """Advance a pending PR-comment confirmation from the user's reply.
+
+    Two stages. If the repo is still missing (the twin asked "which repo?"),
+    parse it from the answer and stay MEDIUM to confirm now that the target is
+    known. Once the repo is present, read a yes/no: affirmative -> HIGH (execute);
+    negative -> a terminal decline (``action="none"``, reason
+    ``"post_github_comment declined"``, slots kept so the caller can still name
+    the target); neither -> stay MEDIUM to re-ask.
+    """
+
+    slots = dict(pending.slots)
+
+    if not slots.get("repo"):
+        repo, number, _ = _parse_github_ref(answer)
+        if repo:
+            slots["repo"] = repo
+            if number is not None:
+                slots["number"] = number
+        return ProposedAction(
+            action="post_github_comment",
+            source="rules",
+            confidence=MEDIUM_CONFIDENCE,
+            slots=slots,
+            reason=pending.reason,
+        )
+
+    verdict = _is_affirmative(answer)
+
+    if verdict is True:
+        return ProposedAction(
+            action="post_github_comment",
+            source="rules",
+            confidence=0.9,
+            slots=slots,
+            reason="post_github_comment confirmed",
+        )
+
+    if verdict is False:
+        return ProposedAction(
+            action="none",
+            source="rules",
+            confidence=0.0,
+            slots=slots,
+            reason="post_github_comment declined",
+        )
+
+    return ProposedAction(
+        action="post_github_comment",
+        source="rules",
+        confidence=MEDIUM_CONFIDENCE,
+        slots=slots,
+        reason=pending.reason,
+    )
+
+
 def merge_answer(pending: ProposedAction, answer: str, now=None) -> ProposedAction:
     """Fill a pending proposal's missing slot from a free-text answer.
 
@@ -394,6 +553,11 @@ def merge_answer(pending: ProposedAction, answer: str, now=None) -> ProposedActi
 
     slots = dict(pending.slots)
     title = (slots.get("title") or "").strip()
+
+    if pending.action == "post_github_comment":
+        # A public write runs its own two-stage confirm (fill repo, then yes/no);
+        # never fall into the reminder/habit/goal chain below.
+        return _merge_github_comment(pending, answer)
 
     if pending.action == "none" and "candidates" in slots:
         # A clarification answer picks a category; hand off to build the

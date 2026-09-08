@@ -32,6 +32,7 @@ _FAILURE_VERB = {
     "create_goal": "save that goal",
     "create_habit": "add that habit",
     "create_project": "create that project",
+    "post_github_comment": "post that comment",
 }
 
 
@@ -112,6 +113,13 @@ def _success_sentence(decision, execution: dict, now: datetime) -> str:
         if name:
             return f"Done — I've created the project {name}."
         return "Done — I've created that project."
+
+    if action == "post_github_comment":
+        repo = getattr(decision, "github_repo", None)
+        number = getattr(decision, "github_number", None)
+        if repo and number:
+            return f"Done — posted your comment on {repo} #{number}."
+        return "Done — posted your comment."
 
     return "Done — that's taken care of."
 

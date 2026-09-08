@@ -137,12 +137,40 @@ class FakeProjectsClient:
         return self.created
 
 
+class FakeGithubClient:
+    def __init__(
+        self,
+        created=None,
+        raise_on_post=False,
+    ) -> None:
+        # The write endpoint returns the created comment; the response is
+        # itself the verification (no separate read-back GET).
+        self.created = (
+            created
+            if created is not None
+            else {
+                "id": 555,
+                "html_url": ("https://github.com/acme/app/pull/42#issuecomment-555"),
+                "body": "LGTM",
+            }
+        )
+        self.raise_on_post = raise_on_post
+        self.post_calls: list[dict] = []
+
+    async def post_comment(self, **kwargs):
+        self.post_calls.append(kwargs)
+        if self.raise_on_post:
+            raise httpx.HTTPError("boom")
+        return self.created
+
+
 def _executor(
     reminders_client=None,
     *,
     goals_client=None,
     habits_client=None,
     projects_client=None,
+    github_client=None,
 ) -> ActionExecutor:
     return ActionExecutor(
         projects_client=projects_client,
@@ -150,6 +178,7 @@ def _executor(
         goals_client=goals_client,
         habits_client=habits_client,
         reminders_client=reminders_client,
+        github_client=github_client,
     )
 
 
@@ -543,3 +572,87 @@ async def test_reminder_scheduled_for_takes_precedence_over_date_time() -> None:
 
     assert result["executed"] is True
     assert client.create_calls[0]["scheduled_for"] == "2999-01-01T09:00:00+05:30"
+
+
+def _github_decision(**overrides) -> ContextDecision:
+    base = dict(
+        action="post_github_comment",
+        reason="test",
+        github_repo="acme/app",
+        github_number=42,
+        github_comment_body="LGTM",
+    )
+    base.update(overrides)
+    return ContextDecision(**base)
+
+
+async def test_github_comment_happy_path_posts_and_verifies() -> None:
+    client = FakeGithubClient()
+    result = await _executor(github_client=client).execute("user-1", _github_decision())
+
+    assert result["executed"] is True
+    assert result["verified"] is True
+    assert result["idempotency_key"]
+    assert result["comment"] == client.created
+    # The repo/number/body and the derived key are forwarded downstream.
+    assert client.post_calls[0]["repo"] == "acme/app"
+    assert client.post_calls[0]["number"] == 42
+    assert client.post_calls[0]["body"] == "LGTM"
+    assert client.post_calls[0]["idempotency_key"] == result["idempotency_key"]
+
+
+async def test_github_comment_idempotency_key_is_stable_across_retries() -> None:
+    client = FakeGithubClient()
+    executor = _executor(github_client=client)
+
+    first = await executor.execute("user-1", _github_decision())
+    second = await executor.execute("user-1", _github_decision())
+
+    assert first["idempotency_key"] == second["idempotency_key"]
+
+
+async def test_github_comment_response_without_id_or_url_is_unverified() -> None:
+    # The POST "succeeded" but returned nothing identifying: report executed
+    # yet unverified rather than fabricating confirmation.
+    client = FakeGithubClient(created={"body": "LGTM"})
+    result = await _executor(github_client=client).execute("user-1", _github_decision())
+
+    assert result["executed"] is True
+    assert result["verified"] is False
+
+
+async def test_github_comment_downstream_error_is_structured_not_raised() -> None:
+    client = FakeGithubClient(raise_on_post=True)
+    result = await _executor(github_client=client).execute("user-1", _github_decision())
+
+    assert result["executed"] is False
+    assert "failed" in result["reason"].lower()
+    assert result["idempotency_key"]
+
+
+async def test_github_comment_without_client_is_not_configured() -> None:
+    result = await _executor().execute("user-1", _github_decision())
+
+    assert result["executed"] is False
+    assert "not configured" in result["reason"].lower()
+
+
+@pytest.mark.parametrize(
+    "overrides, reason_fragment",
+    [
+        ({"github_repo": None}, "repo"),
+        ({"github_number": None}, "number"),
+        ({"github_comment_body": None}, "body"),
+    ],
+)
+async def test_github_comment_missing_fields_are_rejected(
+    overrides, reason_fragment
+) -> None:
+    client = FakeGithubClient()
+    result = await _executor(github_client=client).execute(
+        "user-1", _github_decision(**overrides)
+    )
+
+    assert result["executed"] is False
+    assert reason_fragment in result["reason"].lower()
+    assert client.post_calls == []
