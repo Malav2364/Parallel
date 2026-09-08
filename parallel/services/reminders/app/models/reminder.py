@@ -18,6 +18,10 @@ class Reminder(Base):
                 "recurrence",
                 name="uq_reminder_owner_title_schedule_recurrence",
                 ),
+            UniqueConstraint(
+                "idempotency_key",
+                name="uq_reminder_idempotency_key",
+                ),
         )
 
     id: Mapped[str] = mapped_column(
@@ -62,6 +66,11 @@ class Reminder(Base):
 
     recurrence: Mapped[str | None] = mapped_column(
         String(100),
+        nullable=True,
+    )
+
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(64),
         nullable=True,
     )
 

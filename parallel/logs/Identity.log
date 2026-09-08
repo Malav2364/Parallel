@@ -1,0 +1,51 @@
+warning: Failed to uninstall package at .venv\Lib\site-packages\bcrypt-5.0.0.dist-info due to missing `RECORD` file. Installation may result in an incomplete environment.
+Uninstalled 2 packages in 1.01s
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 1 package in 114ms
+INFO:     Will watch for changes in these directories: ['D:\\parallel\\parallel\\services\\identity']
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [11820] using StatReload
+2026-09-03 19:35:01,213 | INFO | identity | Starting Identity Service
+INFO:     Started server process [24492]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+2026-09-03 19:35:22,386 | ERROR | identity | AUTH_002: Invalid email or password | Path: /api/v1/auth/login
+INFO:     127.0.0.1:19076 - "POST /api/v1/auth/login HTTP/1.1" 401 Unauthorized
+2026-09-03 19:35:35,468 | ERROR | identity | AUTH_002: Invalid email or password | Path: /api/v1/auth/login
+INFO:     127.0.0.1:19081 - "POST /api/v1/auth/login HTTP/1.1" 401 Unauthorized
+2026-09-03 19:35:57,822 | ERROR | identity | AUTH_002: Invalid email or password | Path: /api/v1/auth/login
+INFO:     127.0.0.1:56175 - "POST /api/v1/auth/login HTTP/1.1" 401 Unauthorized
+2026-09-03 19:36:06,855 | ERROR | identity | AUTH_002: Invalid email or password | Path: /api/v1/auth/login
+INFO:     127.0.0.1:31619 - "POST /api/v1/auth/login HTTP/1.1" 401 Unauthorized
+2026-09-03 19:38:34,865 | ERROR | identity | AUTH_004: Invalid or expired access token | Path: /api/v1/auth/validate-token
+INFO:     127.0.0.1:37913 - "POST /api/v1/auth/validate-token HTTP/1.1" 401 Unauthorized
+2026-09-03 19:38:34,889 | ERROR | identity | AUTH_004: Invalid or expired access token | Path: /api/v1/auth/refresh
+INFO:     127.0.0.1:37913 - "POST /api/v1/auth/refresh HTTP/1.1" 401 Unauthorized
+2026-09-03 19:38:46,887 | WARNING | passlib.handlers.bcrypt | (trapped) error reading bcrypt version
+Traceback (most recent call last):
+  File "D:\parallel\parallel\services\identity\.venv\Lib\site-packages\passlib\handlers\bcrypt.py", line 620, in _load_backend_mixin
+    version = _bcrypt.__about__.__version__
+              ^^^^^^^^^^^^^^^^^
+AttributeError: module 'bcrypt' has no attribute '__about__'
+2026-09-03 19:38:47,629 | ERROR | identity | AUTH_002: Invalid email or password | Path: /api/v1/auth/login
+INFO:     127.0.0.1:50421 - "POST /api/v1/auth/login HTTP/1.1" 401 Unauthorized
+2026-09-03 19:38:57,919 | ERROR | identity | AUTH_002: Invalid email or password | Path: /api/v1/auth/login
+INFO:     127.0.0.1:15643 - "POST /api/v1/auth/login HTTP/1.1" 401 Unauthorized
+2026-09-03 19:39:02,066 | ERROR | identity | AUTH_002: Invalid email or password | Path: /api/v1/auth/login
+INFO:     127.0.0.1:15643 - "POST /api/v1/auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:3495 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3495 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:3495 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3495 - "GET /openapi.json HTTP/1.1" 200 OK
+2026-09-03 19:40:01,715 | INFO | identity | Password reset requested: malavp024@gmail.com
+INFO:     127.0.0.1:35805 - "POST /api/v1/auth/forgot-password HTTP/1.1" 200 OK
+2026-09-03 19:41:19,648 | INFO | identity | Password reset completed: malavp024@gmail.com
+INFO:     127.0.0.1:47655 - "POST /api/v1/auth/reset-password HTTP/1.1" 200 OK
+2026-09-03 19:41:47,950 | INFO | identity | User logged in: malavp024@gmail.com
+INFO:     127.0.0.1:1189 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1189 - "POST /api/v1/auth/validate-token HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32563 - "POST /api/v1/auth/validate-token HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34779 - "POST /api/v1/auth/validate-token HTTP/1.1" 200 OK
+INFO:     127.0.0.1:28634 - "POST /api/v1/auth/validate-token HTTP/1.1" 200 OK

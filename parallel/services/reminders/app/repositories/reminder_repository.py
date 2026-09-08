@@ -226,3 +226,16 @@ class ReminderRepository:
         )
 
         return self.db.scalar(statement)
+
+    def get_by_idempotency_key(
+        self,
+        idempotency_key: str,
+    ) -> Reminder | None:
+        statement = select(Reminder).where(
+            Reminder.idempotency_key == idempotency_key
+        )
+
+        return self.db.scalar(statement)
+
+    def rollback(self) -> None:
+        self.db.rollback()

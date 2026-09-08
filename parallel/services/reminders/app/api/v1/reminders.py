@@ -20,6 +20,10 @@ router = APIRouter()
 def create_reminder(
     request: ReminderCreate,
     x_user_id: str = Header(...),
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="Idempotency-Key",
+    ),
     service: ReminderService = Depends(
         get_reminder_service
     ),
@@ -28,6 +32,7 @@ def create_reminder(
     return service.create_reminder(
         request=request,
         owner_id=x_user_id,
+        idempotency_key=idempotency_key,
     )
 
 

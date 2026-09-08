@@ -1,15 +1,36 @@
 from google import genai
-from pydantic import BaseModel, Field
 
 from app.core.config import settings
+from app.schemas.extraction import ContextExtraction
+
+__all__ = ["ContextExtraction", "ContextExtractor", "normalize_extraction_updates"]
 
 
-class ContextExtraction(BaseModel):
-    """Structured information proposed by Gemini."""
+def normalize_extraction_updates(updates: dict, current_context: dict) -> dict:
+    """Fold freshly-extracted goals into ``goals_to_add`` and drop the
+    service-owned ``projects`` key.
 
-    updates: dict = Field(default_factory=dict)
-    confidence: float = Field(ge=0, le=1)
-    reasoning: str = ""
+    Shared by the standalone ``ContextExtractor`` and the merged
+    ``UnderstandingEngine`` so both normalize identical whether the extraction
+    came from its own call or the combined understanding call.
+    """
+    if "goals" in updates and "goals_to_add" not in updates:
+        existing_goals = current_context.get("goals", [])
+        extracted_goals = updates.pop("goals")
+
+        existing_normalized = {
+            goal.strip().lower() for goal in existing_goals if isinstance(goal, str)
+        }
+        new_goals = [
+            goal
+            for goal in extracted_goals
+            if isinstance(goal, str) and goal.strip().lower() not in existing_normalized
+        ]
+        if new_goals:
+            updates["goals_to_add"] = new_goals
+
+    updates.pop("projects", None)
+    return updates
 
 
 class ContextExtractor:
@@ -88,33 +109,10 @@ Rules:
             },
         )
 
-        # return ContextExtraction.model_validate_json(response.text or "{}")
         result = ContextExtraction.model_validate_json(response.text or "{}")
 
-        updates = result.updates
-
-        if "goals" in updates and "goals_to_add" not in updates:
-            existing_goals = current_context.get("goals", [])
-            extracted_goals = updates.pop("goals")
-
-            existing_normalized = {
-                goal.strip().lower() for goal in existing_goals if isinstance(goal, str)
-            }
-
-            new_goals = [
-                goal
-                for goal in extracted_goals
-                if isinstance(goal, str)
-                and goal.strip().lower() not in existing_normalized
-            ]
-
-            if new_goals:
-                updates["goals_to_add"] = new_goals
-
-        updates.pop("projects", None)
-
         return ContextExtraction(
-            updates=updates,
+            updates=normalize_extraction_updates(result.updates, current_context),
             confidence=result.confidence,
             reasoning=result.reasoning,
         )

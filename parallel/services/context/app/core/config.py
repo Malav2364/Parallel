@@ -12,8 +12,17 @@ class Settings(BaseSettings):
     PROJECTS_SERVICE_URL: str
     GOALS_SERVICE_URL: str
     REMINDERS_SERVICE_URL: str
+    GITHUB_SERVICE_URL: str = "http://github:8000/api/v1/github"
     GEMINI_API_KEY: str
     CONTEXT_MODEL: str
+
+    # Tier-2 semantic project resolver (in-process cosine over Gemini
+    # embeddings). A match requires the top project to clear THRESHOLD and to
+    # lead the runner-up by at least MARGIN; otherwise the cascade defers to
+    # the LLM resolver rather than guessing.
+    EMBEDDING_MODEL: str = "gemini-embedding-001"
+    EMBEDDING_MATCH_THRESHOLD: float = 0.78
+    EMBEDDING_MATCH_MARGIN: float = 0.06
 
     LOG_LEVEL: str = "INFO"
 

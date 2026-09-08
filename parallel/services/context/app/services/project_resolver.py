@@ -16,14 +16,18 @@ class ProjectResolver:
             api_key=settings.GEMINI_API_KEY,
         )
 
-    def resolve(
+    async def resolve(
         self,
         user_id: str,
         user_input: str,
+        projects: list[dict] | None = None,
     ) -> ProjectResolution:
-        projects = self.projects_client.list_projects(
-            user_id,
-        )
+        # ``/process`` already fetched the user's projects for the Tier-2
+        # semantic pass; accept them here so a semantic miss doesn't re-fetch.
+        if projects is None:
+            projects = await self.projects_client.list_projects(
+                user_id,
+            )
 
         if not projects:
             return ProjectResolution(

@@ -4,10 +4,11 @@ from app.core.config import settings
 
 
 class WorkspaceClient:
-    def __init__(self) -> None:
+    def __init__(self, client: httpx.AsyncClient) -> None:
         self.base_url = settings.WORKSPACE_SERVICE_URL.rstrip("/")
+        self._client = client
 
-    def create_space(
+    async def create_space(
         self,
         user_id: str,
         name: str,
@@ -16,7 +17,7 @@ class WorkspaceClient:
         visibility: str = "private",
         source: str = "ai",
     ) -> dict:
-        response = httpx.post(
+        response = await self._client.post(
             f"{self.base_url}/spaces",
             headers={"X-User-Id": user_id},
             json={
@@ -31,14 +32,14 @@ class WorkspaceClient:
         response.raise_for_status()
         return response.json()
 
-    def get_by_name(
+    async def get_by_name(
         self,
         user_id: str,
         name: str,
     ) -> dict | None:
         normalized_name = name.strip().lower()
 
-        response = httpx.get(
+        response = await self._client.get(
             f"{self.base_url}/spaces",
             headers={"X-User-Id": user_id},
             timeout=10.0,
@@ -51,18 +52,17 @@ class WorkspaceClient:
             (
                 space
                 for space in spaces
-                if space.get("name", "").strip().lower()
-                == normalized_name
+                if space.get("name", "").strip().lower() == normalized_name
             ),
             None,
         )
 
-    def associate_project(
+    async def associate_project(
         self,
         space_id: str,
         project_id: str,
     ) -> dict:
-        response = httpx.post(
+        response = await self._client.post(
             f"{self.base_url}/spaces/{space_id}/projects",
             json={"project_id": project_id},
             timeout=10.0,

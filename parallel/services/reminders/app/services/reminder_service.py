@@ -1,4 +1,5 @@
 from datetime import datetime, timezone, timedelta
+from sqlalchemy.exc import IntegrityError
 from app.services.recurrence_service import RecurrenceService
 from app.models.reminder import Reminder
 from app.core.config import settings
@@ -21,6 +22,7 @@ class ReminderService:
         self,
         request: ReminderCreate,
         owner_id: str,
+        idempotency_key: str | None = None,
     ) -> Reminder:
         title = request.title.strip()
 
@@ -29,6 +31,15 @@ class ReminderService:
             request.scheduled_for,
             request.timezone,
         )
+
+        # Fast replay: the same idempotency key always maps to the same row.
+        if idempotency_key:
+            existing = self.repository.get_by_idempotency_key(
+                idempotency_key,
+            )
+
+            if existing is not None:
+                return existing
 
         existing = self.repository.get_duplicate(
             owner_id=owner_id,
@@ -47,8 +58,34 @@ class ReminderService:
             timezone=request.timezone,
             recurrence=request.recurrence,
             status=request.status,
+            idempotency_key=idempotency_key,
         )
-        return self.repository.create(reminder)
+
+        try:
+            return self.repository.create(reminder)
+        except IntegrityError:
+            # Lost a race to a concurrent create; return the winning row
+            # instead of surfacing the unique-constraint violation as a 500.
+            self.repository.rollback()
+
+            if idempotency_key:
+                winner = self.repository.get_by_idempotency_key(
+                    idempotency_key,
+                )
+
+                if winner is not None:
+                    return winner
+
+            winner = self.repository.get_duplicate(
+                owner_id=owner_id,
+                title=title,
+                scheduled_for=scheduled_for,
+            )
+
+            if winner is not None:
+                return winner
+
+            raise
 
     def list_reminders(
         self,

@@ -126,11 +126,59 @@ services:
       APP_NAME: Parallel Context Service
       APP_VERSION: 1.0.0
       GOALS_SERVICE_URL: http://goals:8000/api/v1
+      GITHUB_SERVICE_URL: http://github:8000/api/v1/github
       LOG_LEVEL: INFO
     depends_on:
       postgres:
         condition: service_healthy
       goals:
+        condition: service_started
+      github:
+        condition: service_started
+
+  notifications:
+    build:
+      context: ./services/notifications
+    container_name: parallel-notifications
+    volumes:
+      - ./services/notifications:/app
+    environment:
+      DATABASE_URL: postgresql+psycopg://parallel_user:parallel123@postgres:5432/pios_notifications
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  github:
+    build:
+      context: ./services/github
+    container_name: parallel-github
+    volumes:
+      - ./services/github:/app
+    environment:
+      DATABASE_URL: postgresql+psycopg://parallel_user:parallel123@postgres:5432/pios_github
+      CONNECTOR_VAULT_KEY: ${CONNECTOR_VAULT_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  github-worker:
+    build:
+      context: ./services/github
+    container_name: parallel-github-worker
+    command: ["uv", "run", "python", "-m", "app.worker_main"]
+    volumes:
+      - ./services/github:/app
+    environment:
+      DATABASE_URL: postgresql+psycopg://parallel_user:parallel123@postgres:5432/pios_github
+      CONNECTOR_VAULT_KEY: ${CONNECTOR_VAULT_KEY}
+      NOTIFICATIONS_SERVICE_URL: http://notifications:8000/api/v1
+      WATCHER_POLL_INTERVAL: "300"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      github:
+        condition: service_started
+      notifications:
         condition: service_started
 
   gateway:
@@ -147,13 +195,16 @@ services:
       APP_ENV: development
       HOST: 0.0.0.0
       PORT: 8000
-      IDENTITY_SERVICE_URL: http://identity:8000
+      IDENTITY_SERVICE_URL: http://identity:8000/api/v1
       PROJECTS_SERVICE_URL: http://projects:8000/api/v1/projects
       WORKSPACE_SERVICE_URL: http://spaces:8000/api/v1
+      CONTEXT_SERVICE_URL: http://context:8000/api/v1/context
+      GITHUB_SERVICE_URL: http://github:8000/api/v1/github
       JWT_SECRET_KEY: development-secret-key-change-me
       JWT_ALGORITHM: HS256
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
+      FRONTEND_URL: http://localhost:3000
     depends_on:
       identity:
         condition: service_started
@@ -164,6 +215,8 @@ services:
       context:
         condition: service_started
       goals:
+        condition: service_started
+      github:
         condition: service_started
       redis:
         condition: service_healthy

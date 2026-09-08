@@ -1,0 +1,8 @@
+INFO:     Will watch for changes in these directories: ['D:\\parallel\\parallel\\services\\github']
+INFO:     Uvicorn running on http://127.0.0.1:8009 (Press CTRL+C to quit)
+INFO:     Started reloader process [16588] using StatReload
+INFO:     Started server process [4800]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:46562 - "GET /api/v1/github/signals?unread=false HTTP/1.1" 200 OK
+INFO:     127.0.0.1:28636 - "GET /api/v1/github/signals?unread=false HTTP/1.1" 200 OK
