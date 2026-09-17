@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,4 +41,37 @@ class CommentResponse(BaseModel):
     id: int
     url: str
     body: str
+
+
+class ApprovalCreateRequest(BaseModel):
+    repo: str = Field(min_length=1)
+    number: int
+    body: str | None = None
+
+
+class ReviewResponse(BaseModel):
+    id: int
+    state: str
+
+
+class MergeCreateRequest(BaseModel):
+    repo: str = Field(min_length=1)
+    number: int
+    merge_method: Literal["merge", "squash", "rebase"] = "merge"
+
+
+class MergeResponse(BaseModel):
+    merged: bool
+    sha: str | None = None
+    message: str
+
+
+class CloseCreateRequest(BaseModel):
+    repo: str = Field(min_length=1)
+    number: int
+
+
+class PullStateResponse(BaseModel):
+    number: int
+    state: str
 

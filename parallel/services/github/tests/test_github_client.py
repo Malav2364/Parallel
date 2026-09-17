@@ -131,3 +131,86 @@ def test_create_issue_comment_raises_on_write_denied(monkeypatch):
 
     with pytest.raises(httpx.HTTPStatusError):
         GitHubClient().create_issue_comment("scope-poor", "acme/app", 42, "LGTM")
+
+
+def test_create_pull_review_posts_approve_event(monkeypatch):
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        return httpx.Response(
+            200,
+            json={"id": 987, "state": "APPROVED"},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    result = GitHubClient().create_pull_review(
+        "ghp_token", "acme/app", 42, body="nice work"
+    )
+
+    assert captured["url"].endswith("/repos/acme/app/pulls/42/reviews")
+    assert captured["headers"]["Authorization"] == "Bearer ghp_token"
+    assert captured["json"] == {"event": "APPROVE", "body": "nice work"}
+    assert result == {"id": 987, "state": "APPROVED"}
+
+
+def test_merge_pull_puts_merge_method(monkeypatch):
+    captured = {}
+
+    def fake_put(url, headers=None, json=None, timeout=None):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        return httpx.Response(
+            200,
+            json={"merged": True, "sha": "abc123", "message": "merged"},
+            request=httpx.Request("PUT", url),
+        )
+
+    monkeypatch.setattr(httpx, "put", fake_put)
+
+    result = GitHubClient().merge_pull("ghp_token", "acme/app", 42, "squash")
+
+    assert captured["url"].endswith("/repos/acme/app/pulls/42/merge")
+    assert captured["headers"]["Authorization"] == "Bearer ghp_token"
+    assert captured["json"] == {"merge_method": "squash"}
+    assert result["merged"] is True
+
+
+def test_close_pull_patches_state_closed(monkeypatch):
+    captured = {}
+
+    def fake_patch(url, headers=None, json=None, timeout=None):
+        captured["url"] = url
+        captured["json"] = json
+        return httpx.Response(
+            200,
+            json={"number": 42, "state": "closed"},
+            request=httpx.Request("PATCH", url),
+        )
+
+    monkeypatch.setattr(httpx, "patch", fake_patch)
+
+    result = GitHubClient().close_pull("ghp_token", "acme/app", 42)
+
+    assert captured["url"].endswith("/repos/acme/app/pulls/42")
+    assert captured["json"] == {"state": "closed"}
+    assert result["state"] == "closed"
+
+
+def test_merge_pull_raises_when_not_mergeable(monkeypatch):
+    def fake_put(url, headers=None, json=None, timeout=None):
+        return httpx.Response(
+            405,
+            json={"message": "Pull Request is not mergeable"},
+            request=httpx.Request("PUT", url),
+        )
+
+    monkeypatch.setattr(httpx, "put", fake_put)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        GitHubClient().merge_pull("ghp_token", "acme/app", 42)

@@ -4,6 +4,7 @@ import pytest
 
 from app.api.deps import (
     get_comment_service,
+    get_pull_request_service,
     get_signal_service,
     get_token_service,
 )
@@ -169,3 +170,131 @@ def test_create_comment_surfaces_write_failure_as_502(client):
     )
 
     assert response.status_code == 502
+
+
+def test_create_review_returns_approved_review(client):
+    fake = Mock()
+    fake.approve.return_value = {"id": 987, "state": "APPROVED"}
+    app.dependency_overrides[get_pull_request_service] = lambda: fake
+
+    response = client.post(
+        "/api/v1/github/reviews",
+        headers={**HEADERS, "Idempotency-Key": "abc123"},
+        json={"repo": "acme/app", "number": 42, "body": "nice work"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"id": 987, "state": "APPROVED"}
+    fake.approve.assert_called_once_with(
+        user_id="user-1",
+        repo="acme/app",
+        number=42,
+        body="nice work",
+        idempotency_key="abc123",
+    )
+
+
+def test_create_review_surfaces_write_failure_as_502(client):
+    fake = Mock()
+    fake.approve.side_effect = GithubWriteError()
+    app.dependency_overrides[get_pull_request_service] = lambda: fake
+
+    response = client.post(
+        "/api/v1/github/reviews",
+        headers=HEADERS,
+        json={"repo": "acme/app", "number": 42},
+    )
+
+    assert response.status_code == 502
+    assert "approve" in response.json()["detail"]
+
+
+def test_create_merge_returns_merge_result(client):
+    fake = Mock()
+    fake.merge.return_value = {
+        "merged": True,
+        "sha": "abc123",
+        "message": "merged",
+    }
+    app.dependency_overrides[get_pull_request_service] = lambda: fake
+
+    response = client.post(
+        "/api/v1/github/merges",
+        headers=HEADERS,
+        json={"repo": "acme/app", "number": 42, "merge_method": "squash"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"merged": True, "sha": "abc123", "message": "merged"}
+    fake.merge.assert_called_once_with(
+        user_id="user-1",
+        repo="acme/app",
+        number=42,
+        merge_method="squash",
+        idempotency_key=None,
+    )
+
+
+def test_create_merge_requires_connection(client):
+    fake = Mock()
+    fake.merge.side_effect = NotConnectedError()
+    app.dependency_overrides[get_pull_request_service] = lambda: fake
+
+    response = client.post(
+        "/api/v1/github/merges",
+        headers=HEADERS,
+        json={"repo": "acme/app", "number": 42},
+    )
+
+    assert response.status_code == 409
+
+
+def test_create_merge_surfaces_write_failure_as_502(client):
+    fake = Mock()
+    fake.merge.side_effect = GithubWriteError()
+    app.dependency_overrides[get_pull_request_service] = lambda: fake
+
+    response = client.post(
+        "/api/v1/github/merges",
+        headers=HEADERS,
+        json={"repo": "acme/app", "number": 42},
+    )
+
+    assert response.status_code == 502
+    assert "merge" in response.json()["detail"]
+
+
+def test_create_closure_returns_closed_state(client):
+    fake = Mock()
+    fake.close.return_value = {"number": 42, "state": "closed"}
+    app.dependency_overrides[get_pull_request_service] = lambda: fake
+
+    response = client.post(
+        "/api/v1/github/closures",
+        headers=HEADERS,
+        json={"repo": "acme/app", "number": 42},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"number": 42, "state": "closed"}
+    fake.close.assert_called_once_with(
+        user_id="user-1",
+        repo="acme/app",
+        number=42,
+        idempotency_key=None,
+    )
+
+
+def test_create_closure_surfaces_write_failure_as_502(client):
+    fake = Mock()
+    fake.close.side_effect = GithubWriteError()
+    app.dependency_overrides[get_pull_request_service] = lambda: fake
+
+    response = client.post(
+        "/api/v1/github/closures",
+        headers=HEADERS,
+        json={"repo": "acme/app", "number": 42},
+    )
+
+    assert response.status_code == 502
+    assert "close" in response.json()["detail"]

@@ -45,6 +45,54 @@ class GitHubClient:
         response.raise_for_status()
         return response.json()
 
+    def create_pull_review(
+        self,
+        token: str,
+        repo: str,
+        number: int,
+        event: str = "APPROVE",
+        body: str | None = None,
+    ) -> dict:
+        response = httpx.post(
+            f"{GITHUB_API}/repos/{repo}/pulls/{number}/reviews",
+            headers=self._headers(token),
+            json={"event": event, "body": body or ""},
+            timeout=TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def merge_pull(
+        self,
+        token: str,
+        repo: str,
+        number: int,
+        merge_method: str = "merge",
+    ) -> dict:
+        response = httpx.put(
+            f"{GITHUB_API}/repos/{repo}/pulls/{number}/merge",
+            headers=self._headers(token),
+            json={"merge_method": merge_method},
+            timeout=TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def close_pull(
+        self,
+        token: str,
+        repo: str,
+        number: int,
+    ) -> dict:
+        response = httpx.patch(
+            f"{GITHUB_API}/repos/{repo}/pulls/{number}",
+            headers=self._headers(token),
+            json={"state": "closed"},
+            timeout=TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def list_review_requests(self, token: str) -> list[dict]:
         return self._search(
             "is:open is:pr review-requested:@me",

@@ -33,7 +33,20 @@ _FAILURE_VERB = {
     "create_habit": "add that habit",
     "create_project": "create that project",
     "post_github_comment": "post that comment",
+    "approve_github_pr": "approve that PR",
+    "merge_github_pr": "merge that PR",
+    "close_github_pr": "close that PR",
 }
+
+
+def decline_message(action: str) -> str:
+    """The warm, terminal line for a declined public write ("no" is final).
+
+    Reuses ``_FAILURE_VERB`` so the phrasing stays identical to the failure copy
+    for the same action (e.g. the comment's live "I won't post that comment.").
+    """
+
+    return f"No problem — I won't {_FAILURE_VERB.get(action, 'do that')}."
 
 
 def with_message(response: dict, now: datetime | None = None) -> dict:
@@ -120,6 +133,27 @@ def _success_sentence(decision, execution: dict, now: datetime) -> str:
         if repo and number:
             return f"Done — posted your comment on {repo} #{number}."
         return "Done — posted your comment."
+
+    if action == "approve_github_pr":
+        repo = getattr(decision, "github_repo", None)
+        number = getattr(decision, "github_number", None)
+        if repo and number:
+            return f"Done — approved {repo} #{number}."
+        return "Done — approved that PR."
+
+    if action == "merge_github_pr":
+        repo = getattr(decision, "github_repo", None)
+        number = getattr(decision, "github_number", None)
+        if repo and number:
+            return f"Done — merged {repo} #{number}."
+        return "Done — merged that PR."
+
+    if action == "close_github_pr":
+        repo = getattr(decision, "github_repo", None)
+        number = getattr(decision, "github_number", None)
+        if repo and number:
+            return f"Done — closed {repo} #{number}."
+        return "Done — closed that PR."
 
     return "Done — that's taken care of."
 

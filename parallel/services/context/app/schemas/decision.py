@@ -19,6 +19,9 @@ ActionType = Literal[
     "suggest_space",
     "create_reminder",
     "post_github_comment",
+    "approve_github_pr",
+    "merge_github_pr",
+    "close_github_pr",
 ]
 
 
@@ -58,6 +61,7 @@ class ContextDecision(BaseModel):
     github_repo: str | None = None
     github_number: int | None = None
     github_comment_body: str | None = None
+    github_merge_method: str | None = None
 
 
 class ContextSignal(BaseModel):

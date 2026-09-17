@@ -156,9 +156,32 @@ class FakeGithubClient:
         )
         self.raise_on_post = raise_on_post
         self.post_calls: list[dict] = []
+        # The PR-lifecycle writes share the fake's shape; each keeps its own
+        # call log so a test can assert exactly one action fired.
+        self.approve_calls: list[dict] = []
+        self.merge_calls: list[dict] = []
+        self.close_calls: list[dict] = []
 
     async def post_comment(self, **kwargs):
         self.post_calls.append(kwargs)
+        if self.raise_on_post:
+            raise httpx.HTTPError("boom")
+        return self.created
+
+    async def approve_pr(self, **kwargs):
+        self.approve_calls.append(kwargs)
+        if self.raise_on_post:
+            raise httpx.HTTPError("boom")
+        return self.created
+
+    async def merge_pr(self, **kwargs):
+        self.merge_calls.append(kwargs)
+        if self.raise_on_post:
+            raise httpx.HTTPError("boom")
+        return self.created
+
+    async def close_pr(self, **kwargs):
+        self.close_calls.append(kwargs)
         if self.raise_on_post:
             raise httpx.HTTPError("boom")
         return self.created
@@ -656,3 +679,145 @@ async def test_github_comment_missing_fields_are_rejected(
     assert result["executed"] is False
     assert reason_fragment in result["reason"].lower()
     assert client.post_calls == []
+
+
+# --------------------------------------------------------------------------
+# GitHub PR-lifecycle writes -- approve / merge / close on the comment's rails
+# --------------------------------------------------------------------------
+
+_GITHUB_WRITES = ["approve_github_pr", "merge_github_pr", "close_github_pr"]
+
+# Per-action verify contract: a response that satisfies the action's verify
+# predicate, one that does not, the result key the raw response is stored under,
+# and the fake's call log for that action.
+_GITHUB_WRITE_OK = {
+    "approve_github_pr": {"id": 987, "state": "APPROVED"},
+    "merge_github_pr": {"merged": True, "sha": "abc123"},
+    "close_github_pr": {"number": 42, "state": "closed"},
+}
+_GITHUB_WRITE_UNCONFIRMED = {
+    "approve_github_pr": {"state": "PENDING"},
+    "merge_github_pr": {"merged": False},
+    "close_github_pr": {"number": 42, "state": "open"},
+}
+_GITHUB_WRITE_FIELD = {
+    "approve_github_pr": "review",
+    "merge_github_pr": "merge",
+    "close_github_pr": "closure",
+}
+_GITHUB_WRITE_CALLS = {
+    "approve_github_pr": "approve_calls",
+    "merge_github_pr": "merge_calls",
+    "close_github_pr": "close_calls",
+}
+
+
+@pytest.mark.parametrize("action", _GITHUB_WRITES)
+async def test_github_write_happy_path_executes_and_verifies(action: str) -> None:
+    client = FakeGithubClient(created=_GITHUB_WRITE_OK[action])
+    result = await _executor(github_client=client).execute(
+        "user-1", _github_decision(action=action)
+    )
+
+    assert result["executed"] is True
+    assert result["verified"] is True
+    assert result["action"] == action
+    assert result[_GITHUB_WRITE_FIELD[action]] == _GITHUB_WRITE_OK[action]
+    assert result["idempotency_key"]
+    # The target and the derived key are forwarded downstream.
+    calls = getattr(client, _GITHUB_WRITE_CALLS[action])
+    assert calls[0]["repo"] == "acme/app"
+    assert calls[0]["number"] == 42
+    assert calls[0]["idempotency_key"] == result["idempotency_key"]
+
+
+@pytest.mark.parametrize("action", _GITHUB_WRITES)
+async def test_github_write_unconfirming_response_is_unverified(action: str) -> None:
+    # The write "succeeded" but its response does not confirm the state we
+    # asked for: report executed yet unverified rather than claiming success.
+    client = FakeGithubClient(created=_GITHUB_WRITE_UNCONFIRMED[action])
+    result = await _executor(github_client=client).execute(
+        "user-1", _github_decision(action=action)
+    )
+
+    assert result["executed"] is True
+    assert result["verified"] is False
+
+
+@pytest.mark.parametrize("action", _GITHUB_WRITES)
+async def test_github_write_downstream_error_is_structured_not_raised(
+    action: str,
+) -> None:
+    client = FakeGithubClient(raise_on_post=True)
+    result = await _executor(github_client=client).execute(
+        "user-1", _github_decision(action=action)
+    )
+
+    assert result["executed"] is False
+    assert "failed" in result["reason"].lower()
+    assert result["idempotency_key"]
+
+
+@pytest.mark.parametrize("action", _GITHUB_WRITES)
+async def test_github_write_without_client_is_not_configured(action: str) -> None:
+    result = await _executor().execute("user-1", _github_decision(action=action))
+
+    assert result["executed"] is False
+    assert "not configured" in result["reason"].lower()
+
+
+@pytest.mark.parametrize("action", _GITHUB_WRITES)
+async def test_github_write_idempotency_key_is_stable_across_retries(
+    action: str,
+) -> None:
+    client = FakeGithubClient(created=_GITHUB_WRITE_OK[action])
+    executor = _executor(github_client=client)
+
+    first = await executor.execute("user-1", _github_decision(action=action))
+    second = await executor.execute("user-1", _github_decision(action=action))
+
+    assert first["idempotency_key"] == second["idempotency_key"]
+
+
+async def test_merge_key_includes_method() -> None:
+    # Merge's key carries the method, so squash and rebase of the same PR are
+    # distinct writes -- neither dedups the other.
+    client = FakeGithubClient(created={"merged": True})
+    executor = _executor(github_client=client)
+
+    squash = await executor.execute(
+        "user-1",
+        _github_decision(action="merge_github_pr", github_merge_method="squash"),
+    )
+    rebase = await executor.execute(
+        "user-1",
+        _github_decision(action="merge_github_pr", github_merge_method="rebase"),
+    )
+
+    assert squash["idempotency_key"] != rebase["idempotency_key"]
+    assert client.merge_calls[0]["merge_method"] == "squash"
+    assert client.merge_calls[1]["merge_method"] == "rebase"
+
+
+@pytest.mark.parametrize("action", _GITHUB_WRITES)
+@pytest.mark.parametrize(
+    "overrides, reason_fragment",
+    [
+        ({"github_repo": None}, "repo"),
+        ({"github_number": None}, "number"),
+    ],
+)
+async def test_github_write_missing_target_is_rejected(
+    action: str, overrides: dict, reason_fragment: str
+) -> None:
+    client = FakeGithubClient()
+    result = await _executor(github_client=client).execute(
+        "user-1", _github_decision(action=action, **overrides)
+    )
+
+    assert result["executed"] is False
+    assert reason_fragment in result["reason"].lower()
+    # No target -> nothing fired on any of the write methods.
+    assert client.approve_calls == []
+    assert client.merge_calls == []
+    assert client.close_calls == []

@@ -9,10 +9,13 @@ class ProjectResolver:
     def __init__(
         self,
         projects_client: ProjectsClient,
+        client=None,
     ):
         self.projects_client = projects_client
 
-        self.client = genai.Client(
+        # Reuse the process-wide genai client when supplied; otherwise build our
+        # own so directly-constructed resolvers keep working unchanged.
+        self.client = client or genai.Client(
             api_key=settings.GEMINI_API_KEY,
         )
 

@@ -66,17 +66,29 @@ class RecordingExecutor:
 class RecordingUnderstandingEngine:
     """Merged extract+decide+activity engine stand-in.
 
-    Records that it ran and the ``project`` it was handed on each call -- a
-    resolved project dict on a match, ``None`` on a miss -- so a test can prove
-    the endpoint fed the right thing into the single Gemini call. Returns a
-    benign "none" decision with an empty extraction and no activity; the
-    engine's own parsing is covered by test_understanding_engine.
+    Records that it ran, the ``project`` it was handed (a resolved project dict
+    on a Tier-2 hit, ``None`` on a miss/no-projects), and -- for the merged
+    miss path -- the ``project_resolution`` and candidate ``projects`` it
+    received, so a test can prove the endpoint fed the right thing into the
+    single Gemini call. On the self-resolve path (``project_resolution`` is None
+    with candidate ``projects``) it stands in for the model's own resolution by
+    returning ``self._resolution``, mirroring the real engine's guarantee that
+    ``result.resolution`` is never null there; otherwise it leaves it null.
+    Returns a benign "none" decision with an empty extraction and no activity;
+    the engine's own parsing is covered by test_understanding_engine.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, resolution: ProjectResolution | None = None) -> None:
         self.called = False
         self.projects: list[dict | None] = []
+        self.project_lists: list[list[dict] | None] = []
+        self.project_resolutions: list[ProjectResolution | None] = []
         self.contexts: list[dict] = []
+        self._resolution = resolution or ProjectResolution(
+            matched=False,
+            confidence=0.9,
+            reason="engine self-resolve: no match",
+        )
 
     def decide(
         self,
@@ -84,15 +96,20 @@ class RecordingUnderstandingEngine:
         current_context,
         project_resolution=None,
         project=None,
+        projects=None,
         **kwargs,
     ) -> UnderstandingResult:
         self.called = True
         self.projects.append(project)
+        self.project_lists.append(projects)
+        self.project_resolutions.append(project_resolution)
         self.contexts.append(current_context)
+        self_resolve = project_resolution is None and projects is not None
         return UnderstandingResult(
             decision=ContextDecision(action="none", reason="fallback"),
             activity=None,
             extraction=ContextExtraction(updates={}, confidence=1.0, reasoning=""),
+            resolution=self._resolution if self_resolve else None,
         )
 
 
@@ -180,21 +197,6 @@ class InMemoryEmbeddingRepo:
 
     def commit(self):
         pass
-
-
-class RecordingGeminiResolver:
-    """Tier-3 Gemini resolver stand-in that records whether it was consulted."""
-
-    def __init__(self) -> None:
-        self.called = False
-
-    async def resolve(self, user_id, user_input, projects=None):
-        self.called = True
-        return ProjectResolution(
-            matched=False,
-            confidence=0.9,
-            reason="gemini: no match",
-        )
 
 
 def _semantic_projects() -> list[dict]:
@@ -353,6 +355,8 @@ def test_medium_reminder_requests_confirmation() -> None:
     pending = body["pending_action"]
     assert pending["action"] == "create_reminder"
     assert pending["slots"]["title"] == "submit report"
+    # A slot-fill confirmation ("when?") is free-text, not yes/no -- no chips.
+    assert "candidates" not in pending["slots"]
     assert "when" in body["prompt"].lower()
     # The composed reply is the same question we asked.
     assert body["message"] == body["prompt"]
@@ -388,6 +392,9 @@ def test_ambiguous_recurring_requests_clarification() -> None:
     assert pending["action"] == "none"
     assert pending["slots"]["activity"] == "meditate"
     assert pending["slots"]["schedule"] == "daily"
+    # The clarification renders two tap chips -- the display words the choice
+    # parser reads, not the internal create_habit/create_reminder action names.
+    assert pending["slots"]["candidates"] == ["Habit", "Reminder"]
     assert "habit" in body["prompt"].lower()
     assert "reminder" in body["prompt"].lower()
     # The composed reply is the same question we asked.
@@ -461,10 +468,16 @@ def test_semantic_match_resolves_project_without_gemini() -> None:
     assert understanding.projects[-1]["id"] == "proj-novel"
 
 
-def test_semantic_miss_falls_through_to_gemini() -> None:
+def test_semantic_miss_merges_resolution_into_understanding_call() -> None:
+    """A Tier-2 miss no longer fires a separate Tier-3 Gemini resolve.
+
+    Instead the one understanding call self-resolves: the endpoint feeds it the
+    candidate ``projects`` with ``project_resolution=None`` and reads the
+    ``resolution`` back off the merged result -- one model round trip, not two.
+    """
+
     executor = RecordingExecutor()
     understanding = RecordingUnderstandingEngine()
-    gemini = RecordingGeminiResolver()
 
     app.dependency_overrides[get_context_service] = lambda: FakeContextService()
     app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
@@ -474,8 +487,9 @@ def test_semantic_miss_falls_through_to_gemini() -> None:
         _semantic_projects(),
     )
     app.dependency_overrides[get_semantic_project_resolver] = _keyword_semantic_resolver
-    # Tier-3 Gemini resolver must be consulted on the semantic miss.
-    app.dependency_overrides[get_project_resolver] = lambda: gemini
+    # The Tier-3 Gemini resolver is gone from /process; if it were still wired
+    # in, this override would blow up the moment it ran.
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
 
     with TestClient(app) as client:
         response = client.post(
@@ -487,11 +501,14 @@ def test_semantic_miss_falls_through_to_gemini() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["resolution_source"] == "llm"
-    assert gemini.called is True
+    # The resolution rode back on the single merged understanding call.
     assert body["resolution"]["matched"] is False
     assert body["tier"] == "llm"
     assert understanding.called is True
-    # A miss hands the engine no project (no activity to report).
+    # The miss self-resolves: no concrete resolution in, candidate projects in.
+    assert understanding.project_resolutions[-1] is None
+    assert understanding.project_lists[-1] == _semantic_projects()
+    # No project handed in pre-call, and the miss resolves to none.
     assert understanding.projects[-1] is None
 
 
@@ -772,4 +789,150 @@ def test_clarification_answer_reminder_chains_to_confirmation() -> None:
     assert pending["slots"]["recurrence"] == "daily"
     assert "when" in body["prompt"].lower()
 
+    assert executor.decisions == []
+
+
+# --------------------------------------------------------------------------
+# GitHub merge -- the full firm-gate walk (fresh -> method -> firm -> execute)
+# and a terminal decline, threading the real serialized pending_action across
+# turns. This is the e2e the comment slice never had: a public write confirms
+# on every turn and only the deliberate final reply lands code.
+# --------------------------------------------------------------------------
+
+
+def test_merge_walks_repo_then_method_then_firm_gate_then_executes() -> None:
+    executor = RecordingExecutor()
+
+    # Turn 1 is a fresh utterance, so the context service, extractor, and the
+    # signals-based repo fill all run; every LLM stage must stay untouched on
+    # all four turns (the answer turns 2-4 skip the fakes entirely).
+    app.dependency_overrides[get_context_service] = lambda: FakeContextService()
+    app.dependency_overrides[get_context_extractor] = lambda: FakeExtractor()
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    app.dependency_overrides[get_github_client] = lambda: FakeGithubClient(signals=[])
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_semantic_project_resolver] = lambda: RaiseIfCalled()
+
+    with TestClient(app) as client:
+        # Turn 1: bare "merge PR 42" names no repo (no signal matches) -> ask
+        # which repo, still MEDIUM. Nothing fires.
+        r1 = client.post(
+            PROCESS_URL,
+            json={"message": "merge PR 42"},
+            headers=HEADERS,
+        )
+        assert r1.status_code == 200
+        first = r1.json()
+        assert first["type"] == "needs_confirmation"
+        assert first["tier"] == "rules"
+        assert first["pending_action"]["action"] == "merge_github_pr"
+        assert first["pending_action"]["slots"]["number"] == 42
+        # Repo still unknown -> Stage A needs a free-text repo, so no chips yet.
+        assert "candidates" not in first["pending_action"]["slots"]
+        assert "which repo is pr #42" in first["prompt"].lower()
+        assert executor.decisions == []
+
+        # Turn 2: name the repo -> the method question, still MEDIUM.
+        r2 = client.post(
+            PROCESS_URL,
+            json={
+                "message": "acme/app#42",
+                "pending_action": first["pending_action"],
+            },
+            headers=HEADERS,
+        )
+        assert r2.status_code == 200
+        second = r2.json()
+        assert second["type"] == "needs_confirmation"
+        assert second["pending_action"]["slots"]["repo"] == "acme/app"
+        assert "method" not in second["pending_action"]["slots"]
+        # Repo known, method open -> the three merge methods as tap chips.
+        assert second["pending_action"]["slots"]["candidates"] == [
+            "merge",
+            "squash",
+            "rebase",
+        ]
+        assert "how should i merge acme/app #42" in second["prompt"].lower()
+        assert executor.decisions == []
+
+        # Turn 3: pick squash -> the firm gate names the op and asks for the
+        # number. A bare "yes" here would not pass (covered in test_merge).
+        r3 = client.post(
+            PROCESS_URL,
+            json={
+                "message": "squash",
+                "pending_action": second["pending_action"],
+            },
+            headers=HEADERS,
+        )
+        assert r3.status_code == 200
+        third = r3.json()
+        assert third["type"] == "needs_confirmation"
+        assert third["pending_action"]["slots"]["method"] == "squash"
+        # Firm gate -> tap the PR number to confirm (or Cancel).
+        assert third["pending_action"]["slots"]["candidates"] == ["42", "Cancel"]
+        assert "Squash-merge acme/app #42?" in third["prompt"]
+        assert "reply with the PR number (42)" in third["prompt"]
+        assert executor.decisions == []
+
+        # Turn 4: type the number -> the firm gate passes and the merge fires.
+        r4 = client.post(
+            PROCESS_URL,
+            json={
+                "message": "42",
+                "pending_action": third["pending_action"],
+            },
+            headers=HEADERS,
+        )
+        assert r4.status_code == 200
+        fourth = r4.json()
+
+    assert fourth["type"] == "new_intent"
+    assert fourth["tier"] == "rules"
+    assert len(executor.decisions) == 1
+    decision = executor.decisions[0]
+    assert decision.action == "merge_github_pr"
+    assert decision.github_repo == "acme/app"
+    assert decision.github_number == 42
+    assert decision.github_merge_method == "squash"
+
+
+def test_merge_decline_is_terminal_and_writes_nothing() -> None:
+    executor = RecordingExecutor()
+
+    # A "no" to a public write is model-free AND connector-free: only the
+    # executor is a real fake (to prove it never fires); everything else,
+    # including the GitHub client, must be untouched.
+    app.dependency_overrides[get_action_executor] = lambda: executor
+    app.dependency_overrides[get_context_service] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_context_extractor] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_github_client] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_project_resolver] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_understanding_engine] = lambda: RaiseIfCalled()
+    app.dependency_overrides[get_projects_client] = lambda: RaiseIfCalled()
+
+    with TestClient(app) as client:
+        response = client.post(
+            PROCESS_URL,
+            json={
+                "message": "no",
+                "pending_action": {
+                    "action": "merge_github_pr",
+                    "source": "rules",
+                    "confidence": 0.5,
+                    "slots": {"repo": "acme/app", "number": 42, "method": "squash"},
+                    "reason": "rule:github_merge",
+                },
+            },
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["type"] == "context_only"
+    assert body["tier"] == "rules"
+    assert body["pending_action"] is None
+    assert body["message"] == "No problem — I won't merge that PR."
     assert executor.decisions == []

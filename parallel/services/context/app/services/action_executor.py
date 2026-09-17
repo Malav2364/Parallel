@@ -1,16 +1,18 @@
-import httpx
-
-from app.clients.goals_client import GoalsClient
-from app.clients.projects_client import ProjectsClient
-from app.clients.workspace_client import WorkspaceClient
-from app.schemas.decision import ContextDecision
-from app.clients.habits_client import HabitsClient
-from app.clients.github_client import GithubClient
-from app.clients.reminders_client import RemindersClient
-from app.services.idempotency import build_key
-from app.services.reminder_datetime import ReminderDateTimeResolver
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+import httpx
+
+from app.clients.github_client import GithubClient
+from app.clients.goals_client import GoalsClient
+from app.clients.habits_client import HabitsClient
+from app.clients.projects_client import ProjectsClient
+from app.clients.reminders_client import RemindersClient
+from app.clients.workspace_client import WorkspaceClient
+from app.schemas.decision import ContextDecision
+from app.services.idempotency import build_key
+from app.services.reminder_datetime import ReminderDateTimeResolver
 
 
 class ActionExecutor:
@@ -67,6 +69,24 @@ class ActionExecutor:
 
         if decision.action == "post_github_comment":
             return await self._post_github_comment(
+                user_id=user_id,
+                decision=decision,
+            )
+
+        if decision.action == "approve_github_pr":
+            return await self._approve_github_pr(
+                user_id=user_id,
+                decision=decision,
+            )
+
+        if decision.action == "merge_github_pr":
+            return await self._merge_github_pr(
+                user_id=user_id,
+                decision=decision,
+            )
+
+        if decision.action == "close_github_pr":
+            return await self._close_github_pr(
                 user_id=user_id,
                 decision=decision,
             )
@@ -478,6 +498,158 @@ class ActionExecutor:
             "verified": verified,
             "idempotency_key": idempotency_key,
         }
+
+    async def _github_write(
+        self,
+        *,
+        user_id: str,
+        action: str,
+        repo: str | None,
+        number: int | None,
+        key_extra: list[str],
+        result_field: str,
+        verify: Callable[[dict], bool],
+        call: Callable[[str], Awaitable[dict]],
+        failure_noun: str,
+    ) -> dict:
+        """Shared spine for the approve/merge/close PR writes.
+
+        Guards the client + required slots (each with its own honest
+        ``executed:False`` reason), derives the per-action idempotency key
+        (``key_extra`` distinguishes e.g. one merge method from another), then
+        runs ``call`` and grades the write off its own response via ``verify``
+        -- no read-back GET, exactly as the comment write documents. A GitHub
+        (or downstream) HTTP error is a graceful soft-fail, never a raise.
+        """
+
+        if self.github_client is None:
+            return {
+                "executed": False,
+                "action": action,
+                "reason": "GitHub client is not configured.",
+            }
+
+        if not repo:
+            return {
+                "executed": False,
+                "action": action,
+                "reason": "GitHub repo was not provided.",
+            }
+
+        if number is None:
+            return {
+                "executed": False,
+                "action": action,
+                "reason": "GitHub PR number was not provided.",
+            }
+
+        idempotency_key = build_key(user_id, action, repo, str(number), *key_extra)
+
+        try:
+            result = await call(idempotency_key)
+        except httpx.HTTPError as exc:
+            return {
+                "executed": False,
+                "action": action,
+                "reason": f"{failure_noun} failed: {exc}",
+                "idempotency_key": idempotency_key,
+            }
+
+        return {
+            "executed": True,
+            "action": action,
+            result_field: result,
+            "verified": verify(result),
+            "idempotency_key": idempotency_key,
+        }
+
+    async def _approve_github_pr(
+        self,
+        user_id: str,
+        decision: ContextDecision,
+    ) -> dict:
+        repo = decision.github_repo
+        number = decision.github_number
+        body = decision.github_comment_body
+
+        async def call(key: str) -> dict:
+            return await self.github_client.approve_pr(
+                user_id=user_id,
+                repo=repo,
+                number=number,
+                body=body,
+                idempotency_key=key,
+            )
+
+        return await self._github_write(
+            user_id=user_id,
+            action="approve_github_pr",
+            repo=repo,
+            number=number,
+            key_extra=[body] if body else [],
+            result_field="review",
+            verify=lambda r: bool(r.get("id") or r.get("state") == "APPROVED"),
+            call=call,
+            failure_noun="GitHub approve request",
+        )
+
+    async def _merge_github_pr(
+        self,
+        user_id: str,
+        decision: ContextDecision,
+    ) -> dict:
+        repo = decision.github_repo
+        number = decision.github_number
+        merge_method = decision.github_merge_method or "merge"
+
+        async def call(key: str) -> dict:
+            return await self.github_client.merge_pr(
+                user_id=user_id,
+                repo=repo,
+                number=number,
+                merge_method=merge_method,
+                idempotency_key=key,
+            )
+
+        return await self._github_write(
+            user_id=user_id,
+            action="merge_github_pr",
+            repo=repo,
+            number=number,
+            key_extra=[merge_method],
+            result_field="merge",
+            verify=lambda r: bool(r.get("merged")),
+            call=call,
+            failure_noun="GitHub merge request",
+        )
+
+    async def _close_github_pr(
+        self,
+        user_id: str,
+        decision: ContextDecision,
+    ) -> dict:
+        repo = decision.github_repo
+        number = decision.github_number
+
+        async def call(key: str) -> dict:
+            return await self.github_client.close_pr(
+                user_id=user_id,
+                repo=repo,
+                number=number,
+                idempotency_key=key,
+            )
+
+        return await self._github_write(
+            user_id=user_id,
+            action="close_github_pr",
+            repo=repo,
+            number=number,
+            key_extra=[],
+            result_field="closure",
+            verify=lambda r: r.get("state") == "closed",
+            call=call,
+            failure_noun="GitHub close request",
+        )
 
     async def _create_project(
         self,

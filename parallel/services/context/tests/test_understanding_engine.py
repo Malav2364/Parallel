@@ -212,3 +212,137 @@ def test_empty_response_text_falls_back_safely() -> None:
 
     assert result.decision.action == "none"
     assert result.activity is None
+
+
+def test_self_resolve_asks_for_and_parses_the_resolution() -> None:
+    # A Tier-2 miss hands ``decide`` the candidate projects but no concrete
+    # resolution, so this same call resolves the project itself and -- because it
+    # matched -- also reports that project's activity, all in one response.
+    payload = UnderstandingResult(
+        decision=ContextDecision(action="none", reason="noted"),
+        resolution=ProjectResolution(
+            matched=True,
+            project_id="proj-novel",
+            confidence=0.9,
+            reason="clearly about the novel",
+        ),
+        activity=ProjectActivity(
+            current_focus="chapter 4",
+            latest_activity="wrote three chapters",
+            confidence=0.9,
+        ),
+    ).model_dump_json()
+    engine, recorder = _engine_with_response(payload)
+
+    projects = [
+        {"id": "proj-novel", "name": "Fantasy Novel"},
+        {"id": "proj-taxes", "name": "Quarterly Taxes"},
+    ]
+    result = engine.decide(
+        user_input="wrote three chapters of my novel today",
+        current_context={"goals": []},
+        project_resolution=None,
+        projects=projects,
+    )
+
+    # The single call produced the resolution the standalone resolver used to.
+    assert result.resolution is not None
+    assert result.resolution.matched is True
+    assert result.resolution.project_id == "proj-novel"
+    assert result.activity.latest_activity == "wrote three chapters"
+
+    # The prompt opted into self-resolve: it carried the candidate projects, the
+    # "resolve it yourself" render, and the conditional-activity section that
+    # only the self-resolve path appends.
+    assert "see PROJECT RESOLUTION below" in recorder["contents"]
+    assert "IF your `resolution` above matched" in recorder["contents"]
+    assert "proj-novel" in recorder["contents"]
+    assert "proj-taxes" in recorder["contents"]
+
+
+def test_self_resolve_rejects_a_hallucinated_project_id() -> None:
+    # The model claims a match on an ID that is not among the candidates. The
+    # engine ports the resolver's safety check and downgrades to not-matched
+    # rather than pointing activity at a project that does not exist.
+    payload = UnderstandingResult(
+        decision=ContextDecision(action="none", reason="noted"),
+        resolution=ProjectResolution(
+            matched=True,
+            project_id="proj-hallucinated",
+            confidence=0.9,
+            reason="made up",
+        ),
+    ).model_dump_json()
+    engine, _ = _engine_with_response(payload)
+
+    result = engine.decide(
+        user_input="did some work",
+        current_context={},
+        project_resolution=None,
+        projects=[{"id": "proj-novel", "name": "Fantasy Novel"}],
+    )
+
+    assert result.resolution.matched is False
+    assert result.resolution.reason == "Resolver returned an invalid project ID."
+
+
+def test_self_resolve_fills_a_missing_resolution() -> None:
+    # A self-resolve response that omits ``resolution`` must not leave the caller
+    # reading ``None.matched``; the engine fills a concrete not-matched.
+    engine, _ = _engine_with_response(
+        '{"decision": {"action": "none", "reason": "noted"}}'
+    )
+
+    result = engine.decide(
+        user_input="hello there",
+        current_context={},
+        project_resolution=None,
+        projects=[{"id": "proj-novel", "name": "Fantasy Novel"}],
+    )
+
+    assert result.resolution is not None
+    assert result.resolution.matched is False
+    assert (
+        result.resolution.reason == "The understanding engine produced no resolution."
+    )
+
+
+def test_self_resolve_unparseable_falls_back_to_not_matched() -> None:
+    # On the self-resolve path the caller reads ``resolution.matched``, so the
+    # unparseable fallback must be a concrete not-matched, not None -- alongside
+    # the usual no-op decision.
+    engine, _ = _engine_with_response("this is not json")
+
+    result = engine.decide(
+        user_input="hello there",
+        current_context={},
+        project_resolution=None,
+        projects=[{"id": "proj-novel", "name": "Fantasy Novel"}],
+    )
+
+    assert result.decision.action == "none"
+    assert result.resolution is not None
+    assert result.resolution.matched is False
+
+
+def test_concrete_resolution_does_not_self_resolve() -> None:
+    # HIT / no-projects paths pass a concrete resolution; the merged call must
+    # NOT self-resolve (the endpoint ignores ``result.resolution`` there) and the
+    # prompt must not opt into the self-resolve rendering.
+    payload = UnderstandingResult(
+        decision=ContextDecision(action="none", reason="noted"),
+    ).model_dump_json()
+    engine, recorder = _engine_with_response(payload)
+
+    result = engine.decide(
+        user_input="did some work",
+        current_context={},
+        project_resolution=ProjectResolution(
+            matched=False, confidence=1.0, reason="no projects"
+        ),
+        project=None,
+    )
+
+    assert result.resolution is None
+    assert "see PROJECT RESOLUTION below" not in recorder["contents"]
+    assert "IF your `resolution` above matched" not in recorder["contents"]

@@ -10,8 +10,11 @@ from app.schemas import ProjectResolution
 class ContextDecisionEngine:
     """Evaluate context proposals without executing downstream actions."""
 
-    def __init__(self):
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    def __init__(self, client=None):
+        # Reuse the process-wide genai client when the app lifespan supplies one;
+        # fall back to building our own so directly-constructed engines (tests,
+        # scripts) keep working unchanged.
+        self.client = client or genai.Client(api_key=settings.GEMINI_API_KEY)
 
     def evaluate(
         self,
@@ -19,8 +22,11 @@ class ContextDecisionEngine:
         current_context: dict,
         extraction: ContextExtraction,
         project_resolution: ProjectResolution | None = None,
-        now = datetime.now(ZoneInfo("Asia/Kolkata"))
+        now: datetime | None = None,
     ) -> ContextDecision:
+        # Default args evaluate once at import, which would freeze "now" for the
+        # process lifetime; resolve it per call instead.
+        now = now or datetime.now(ZoneInfo("Asia/Kolkata"))
         prompt = build_decision_prompt(
             user_input=user_input,
             current_context=current_context,
@@ -47,6 +53,7 @@ def build_decision_prompt(
     extraction: ContextExtraction | None,
     project_resolution: ProjectResolution | None,
     now,
+    self_resolve: bool = False,
 ) -> str:
     current_datetime = now.isoformat()
     current_date = now.date().isoformat()
@@ -82,6 +89,76 @@ def build_decision_prompt(
             "Existing project activity updates are handled by the Project "
             "Activity\nlayer, not by this decision."
         )
+
+    # ``self_resolve`` is True only on the merged understanding path where this
+    # same call resolves the project itself; then the render points at the
+    # resolution the model produces below, and the rule keys on that resolution
+    # rather than on a pre-supplied ``project_resolution``. Both blocks stay
+    # verbatim in the default path so ``/analyze`` renders exactly as before.
+    if self_resolve:
+        resolution_render = (
+            "Project resolution:\n"
+            "You determine this yourself in THIS response as `resolution` -- "
+            "see PROJECT RESOLUTION below."
+        )
+        resolution_rule = """IMPORTANT PROJECT RESOLUTION RULE:
+
+The resolution YOU produce in `resolution` (see PROJECT RESOLUTION below) is
+the authoritative source for whether an equivalent existing project exists.
+
+If the resolution you produce has matched = false:
+
+- There is NO existing project matching the user's message.
+- If the user message describes a concrete ongoing initiative,
+  the Decision Engine MUST consider it a new project.
+- A related goal, current_focus, or other context entry MUST NOT
+  suppress project creation.
+
+If the resolution you produce has matched = true:
+
+- The referenced project already exists.
+- Do NOT create another project for the same initiative.
+- If the message only describes progress, status, tasks, milestones,
+  bugs, or activity on that project, return action "none".
+
+Never infer project existence from:
+- goals
+- current_focus
+- interests
+- habits
+- extraction.updates
+
+Only your `resolution` determines existing project existence."""
+    else:
+        resolution_render = f"Project resolution:\n{project_resolution}"
+        resolution_rule = """IMPORTANT PROJECT RESOLUTION RULE:
+
+The Project Resolver is the authoritative source for whether an
+equivalent existing project exists.
+
+If project_resolution.matched is false:
+
+- There is NO existing project matching the user's message.
+- If the user message describes a concrete ongoing initiative,
+  the Decision Engine MUST consider it a new project.
+- A related goal, current_focus, or other context entry MUST NOT
+  suppress project creation.
+
+If project_resolution.matched is true:
+
+- The referenced project already exists.
+- Do NOT create another project for the same initiative.
+- If the message only describes progress, status, tasks, milestones,
+  bugs, or activity on that project, return action "none".
+
+Never infer project existence from:
+- goals
+- current_focus
+- interests
+- habits
+- extraction.updates
+
+Only Project Resolver determines existing project existence."""
 
     return f"""
 You are the decision component of PIOS, a Personal Intelligence Operating
@@ -157,8 +234,7 @@ Current context BEFORE this message:
 User message:
 {user_input}
 
-Project resolution:
-{project_resolution}
+{resolution_render}
 
 {new_information}
 
@@ -224,34 +300,7 @@ Therefore the Decision Engine must return:
   have already been updated. No additional action is required."
 }}
 
-IMPORTANT PROJECT RESOLUTION RULE:
-
-The Project Resolver is the authoritative source for whether an
-equivalent existing project exists.
-
-If project_resolution.matched is false:
-
-- There is NO existing project matching the user's message.
-- If the user message describes a concrete ongoing initiative,
-  the Decision Engine MUST consider it a new project.
-- A related goal, current_focus, or other context entry MUST NOT
-  suppress project creation.
-
-If project_resolution.matched is true:
-
-- The referenced project already exists.
-- Do NOT create another project for the same initiative.
-- If the message only describes progress, status, tasks, milestones,
-  bugs, or activity on that project, return action "none".
-
-Never infer project existence from:
-- goals
-- current_focus
-- interests
-- habits
-- extraction.updates
-
-Only Project Resolver determines existing project existence.
+{resolution_rule}
 
 IMPORTANT DISTINCTION:
 

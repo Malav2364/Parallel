@@ -1,4 +1,4 @@
-from app.nlu.schemas import ProposedAction
+from app.nlu.schemas import GITHUB_WRITE_ACTIONS, ProposedAction
 from app.schemas.decision import ContextDecision
 
 
@@ -29,13 +29,14 @@ def to_decision(proposal: ProposedAction) -> ContextDecision:
             habit_time_window=slots.get("time_window"),
         )
 
-    if proposal.action == "post_github_comment":
+    if proposal.action in GITHUB_WRITE_ACTIONS:
         return ContextDecision(
             action=proposal.action,
             reason=reason,
             github_repo=slots.get("repo"),
             github_number=slots.get("number"),
             github_comment_body=slots.get("body"),
+            github_merge_method=slots.get("method"),
         )
 
     return ContextDecision(

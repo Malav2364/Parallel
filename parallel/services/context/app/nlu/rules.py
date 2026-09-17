@@ -10,7 +10,7 @@ it declines (returns ``None``) so the cascade can escalate to a later tier.
 import re
 
 from app.nlu.datetime_grammar import detect_recurrence, parse_schedule, split_time
-from app.nlu.schemas import MEDIUM_CONFIDENCE, ProposedAction
+from app.nlu.schemas import GITHUB_WRITE_ACTIONS, MEDIUM_CONFIDENCE, ProposedAction
 
 # Phrases that clearly signal "set me a reminder".
 _REMINDER_TRIGGER = re.compile(
@@ -386,12 +386,101 @@ def propose_github_comment(text, now=None) -> ProposedAction | None:
     )
 
 
+# Explicit intents to act on a PR's lifecycle: approve, merge, or close it.
+# Each is a public write, so -- like commenting -- it only ever proposes at
+# MEDIUM and confirms before firing.
+_APPROVE_TRIGGER = re.compile(r"\bapprove\b", re.IGNORECASE)
+_MERGE_TRIGGER = re.compile(r"\bmerge\b", re.IGNORECASE)
+_CLOSE_TRIGGER = re.compile(r"\bclose\b", re.IGNORECASE)
+
+# The merge method named at confirm time ("squash", "rebase", or plain "merge").
+_MERGE_METHOD = re.compile(r"\b(merge|squash|rebase)\b", re.IGNORECASE)
+
+
+def _propose_github_pr_action(
+    text: str,
+    trigger: re.Pattern,
+    action: str,
+    reason: str,
+    *,
+    with_body: bool,
+) -> ProposedAction | None:
+    """Shared builder for the approve/merge/close PR proposers.
+
+    Requires the verb and a resolvable PR number; the repo is optional
+    (``/process`` fills it from synced PRs) and -- unlike commenting -- there is
+    no body-required gate (a bare "approve PR 42" is a complete intent). Approve
+    keeps any inline body as an optional review note; merge/close ignore it.
+    **Always MEDIUM**: a public write must confirm, never auto-fire.
+    """
+
+    if not trigger.search(text):
+        return None
+
+    repo, number, body = _parse_github_ref(text)
+    if number is None:
+        return None
+
+    slots: dict = {"number": number}
+    if repo:
+        slots["repo"] = repo
+    if with_body and body:
+        slots["body"] = body
+
+    return ProposedAction(
+        action=action,
+        source="rules",
+        confidence=MEDIUM_CONFIDENCE,
+        slots=slots,
+        reason=reason,
+    )
+
+
+def propose_github_approve(text, now=None) -> ProposedAction | None:
+    """Propose an ``approve_github_pr`` action, or ``None`` if not one."""
+
+    return _propose_github_pr_action(
+        text,
+        _APPROVE_TRIGGER,
+        "approve_github_pr",
+        "rule:github_approve",
+        with_body=True,
+    )
+
+
+def propose_github_merge(text, now=None) -> ProposedAction | None:
+    """Propose a ``merge_github_pr`` action, or ``None`` if not one."""
+
+    return _propose_github_pr_action(
+        text,
+        _MERGE_TRIGGER,
+        "merge_github_pr",
+        "rule:github_merge",
+        with_body=False,
+    )
+
+
+def propose_github_close(text, now=None) -> ProposedAction | None:
+    """Propose a ``close_github_pr`` action, or ``None`` if not one."""
+
+    return _propose_github_pr_action(
+        text,
+        _CLOSE_TRIGGER,
+        "close_github_pr",
+        "rule:github_close",
+        with_body=False,
+    )
+
+
 def propose(text, now=None) -> ProposedAction | None:
     """Run the deterministic rules, returning the first confident match."""
 
     for proposer in (
         propose_reminder,
         propose_github_comment,
+        propose_github_approve,
+        propose_github_merge,
+        propose_github_close,
         propose_habit,
         propose_goal,
         propose_clarification,
@@ -485,17 +574,88 @@ def _is_affirmative(text: str) -> bool | None:
     return None
 
 
-def _merge_github_comment(pending: ProposedAction, answer: str) -> ProposedAction:
-    """Advance a pending PR-comment confirmation from the user's reply.
+def _passes_firm_gate(answer: str, number: int | None) -> bool:
+    """Merge's firmer confirm: the reply must name the PR number or the word
+    "merge".
 
-    Two stages. If the repo is still missing (the twin asked "which repo?"),
-    parse it from the answer and stay MEDIUM to confirm now that the target is
-    known. Once the repo is present, read a yes/no: affirmative -> HIGH (execute);
-    negative -> a terminal decline (``action="none"``, reason
-    ``"post_github_comment declined"``, slots kept so the caller can still name
-    the target); neither -> stay MEDIUM to re-ask.
+    A bare "yes" deliberately does not pass, so landing code on the base branch
+    is always a deliberate act rather than a reflexive affirmative.
     """
 
+    if number is not None and re.search(rf"\b{number}\b", answer):
+        return True
+    return bool(re.search(r"\bmerge\b", answer, re.IGNORECASE))
+
+
+def _merge_github_merge(pending: ProposedAction, answer: str) -> ProposedAction:
+    """Advance a pending merge confirmation: pick the method, then firm-confirm.
+
+    Ordering is method -> firm-confirm -> execute, so the firmest act is the last
+    thing before firing. A negative reply is terminal at every stage (checked
+    first, so "no, don't merge 42" declines despite naming the number/verb). With
+    no method yet, read one from the answer (merge / squash / rebase) and stay
+    MEDIUM to ask the firm confirm next; once a method is set, require the firm
+    gate (the PR number or "merge") to fire -- a bare "yes" stays MEDIUM and
+    re-asks.
+    """
+
+    slots = dict(pending.slots)
+    number = slots.get("number")
+
+    # Negative precedence: decline before reading a method or the firm token, so
+    # "no, don't merge 42" declines even though it contains "merge"/"42".
+    if _is_affirmative(answer) is False:
+        return ProposedAction(
+            action="none",
+            source="rules",
+            confidence=0.0,
+            slots=slots,
+            reason="merge_github_pr declined",
+        )
+
+    if not slots.get("method"):
+        method_match = _MERGE_METHOD.search(answer)
+        if method_match:
+            slots["method"] = method_match.group(1).lower()
+        return ProposedAction(
+            action="merge_github_pr",
+            source="rules",
+            confidence=MEDIUM_CONFIDENCE,
+            slots=slots,
+            reason=pending.reason,
+        )
+
+    if _passes_firm_gate(answer, number):
+        return ProposedAction(
+            action="merge_github_pr",
+            source="rules",
+            confidence=0.9,
+            slots=slots,
+            reason="merge_github_pr confirmed",
+        )
+
+    return ProposedAction(
+        action="merge_github_pr",
+        source="rules",
+        confidence=MEDIUM_CONFIDENCE,
+        slots=slots,
+        reason=pending.reason,
+    )
+
+
+def _merge_github_action(pending: ProposedAction, answer: str) -> ProposedAction:
+    """Advance any pending GitHub write confirmation from the user's reply.
+
+    Shared across comment/approve/merge/close. Stage A is action-agnostic: if the
+    repo is still missing (the twin asked "which repo?"), parse it from the answer
+    and stay MEDIUM to confirm now the target is known. Once the repo is present,
+    merge runs its own firmer multi-stage gate (pick a method, then confirm by
+    naming the PR number); the others read a plain yes/no -- affirmative -> HIGH
+    (execute); negative -> a terminal decline (``action="none"``, reason
+    ``f"{action} declined"``, slots kept); neither -> stay MEDIUM to re-ask.
+    """
+
+    action = pending.action
     slots = dict(pending.slots)
 
     if not slots.get("repo"):
@@ -505,22 +665,25 @@ def _merge_github_comment(pending: ProposedAction, answer: str) -> ProposedActio
             if number is not None:
                 slots["number"] = number
         return ProposedAction(
-            action="post_github_comment",
+            action=action,
             source="rules",
             confidence=MEDIUM_CONFIDENCE,
             slots=slots,
             reason=pending.reason,
         )
 
+    if action == "merge_github_pr":
+        return _merge_github_merge(pending, answer)
+
     verdict = _is_affirmative(answer)
 
     if verdict is True:
         return ProposedAction(
-            action="post_github_comment",
+            action=action,
             source="rules",
             confidence=0.9,
             slots=slots,
-            reason="post_github_comment confirmed",
+            reason=f"{action} confirmed",
         )
 
     if verdict is False:
@@ -529,11 +692,11 @@ def _merge_github_comment(pending: ProposedAction, answer: str) -> ProposedActio
             source="rules",
             confidence=0.0,
             slots=slots,
-            reason="post_github_comment declined",
+            reason=f"{action} declined",
         )
 
     return ProposedAction(
-        action="post_github_comment",
+        action=action,
         source="rules",
         confidence=MEDIUM_CONFIDENCE,
         slots=slots,
@@ -554,10 +717,11 @@ def merge_answer(pending: ProposedAction, answer: str, now=None) -> ProposedActi
     slots = dict(pending.slots)
     title = (slots.get("title") or "").strip()
 
-    if pending.action == "post_github_comment":
-        # A public write runs its own two-stage confirm (fill repo, then yes/no);
-        # never fall into the reminder/habit/goal chain below.
-        return _merge_github_comment(pending, answer)
+    if pending.action in GITHUB_WRITE_ACTIONS:
+        # A public write runs its own confirm (fill repo, then yes/no -- or, for
+        # merge, pick a method then a firm confirm); never fall into the
+        # reminder/habit/goal chain below.
+        return _merge_github_action(pending, answer)
 
     if pending.action == "none" and "candidates" in slots:
         # A clarification answer picks a category; hand off to build the
