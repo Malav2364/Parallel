@@ -14,6 +14,19 @@ from app.schemas.decision import ActionType
 
 ProposalSource = Literal["ui", "rules", "nlu", "llm"]
 
+# The outward, public-write GitHub actions. Every one rides the same
+# confirm-then-act loop (always MEDIUM first, "no" is terminal) -- the confirm
+# seams key off membership here rather than a single literal, so all four share
+# one code path. Lives in this leaf module to stay import-cycle free.
+GITHUB_WRITE_ACTIONS = frozenset(
+    {
+        "post_github_comment",
+        "approve_github_pr",
+        "merge_github_pr",
+        "close_github_pr",
+    }
+)
+
 # Confidence bands that drive the execution gate.
 HIGH_CONFIDENCE = 0.85
 MEDIUM_CONFIDENCE = 0.5

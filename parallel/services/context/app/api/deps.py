@@ -37,16 +37,29 @@ def get_context_service(
     return ContextService(repository)
 
 
-def get_context_extractor() -> ContextExtractor:
-    return ContextExtractor()
+def get_genai_client(request: Request):
+    # The process-wide genai client created in the app lifespan. Falls back to
+    # None when no lifespan populated it (e.g. tests overriding these deps), in
+    # which case each engine builds its own client exactly as before.
+    return getattr(request.app.state, "genai_client", None)
 
 
-def get_context_decision_engine() -> ContextDecisionEngine:
-    return ContextDecisionEngine()
+def get_context_extractor(
+    client=Depends(get_genai_client),
+) -> ContextExtractor:
+    return ContextExtractor(client=client)
 
 
-def get_understanding_engine() -> UnderstandingEngine:
-    return UnderstandingEngine()
+def get_context_decision_engine(
+    client=Depends(get_genai_client),
+) -> ContextDecisionEngine:
+    return ContextDecisionEngine(client=client)
+
+
+def get_understanding_engine(
+    client=Depends(get_genai_client),
+) -> UnderstandingEngine:
+    return UnderstandingEngine(client=client)
 
 
 def get_http_client(request: Request) -> httpx.AsyncClient:
@@ -88,14 +101,17 @@ def get_github_client(
     return GithubClient(client)
 
 
-def get_project_activity_extractor() -> ProjectActivityExtractor:
-    return ProjectActivityExtractor()
+def get_project_activity_extractor(
+    client=Depends(get_genai_client),
+) -> ProjectActivityExtractor:
+    return ProjectActivityExtractor(client=client)
 
 
 def get_project_resolver(
     projects_client: ProjectsClient = Depends(get_projects_client),
+    client=Depends(get_genai_client),
 ) -> ProjectResolver:
-    return ProjectResolver(projects_client)
+    return ProjectResolver(projects_client, client=client)
 
 
 def get_embeddings_client() -> EmbeddingsClient:

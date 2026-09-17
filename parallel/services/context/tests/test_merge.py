@@ -220,3 +220,135 @@ def test_github_stage_b_unreadable_answer_stays_medium() -> None:
     assert merged.band == "medium"
     assert not merged.is_executable
     assert merged.reason == "rule:github_comment"
+
+
+# --- approve & close: same yes/no shape as comment, minus the body gate --------
+
+
+@pytest.mark.parametrize(
+    "action, reason",
+    [
+        ("approve_github_pr", "rule:github_approve"),
+        ("close_github_pr", "rule:github_close"),
+    ],
+)
+def test_github_write_stage_a_fills_repo_and_stays_medium(
+    action: str, reason: str
+) -> None:
+    pending = _pending(action, {"number": 42}, reason=reason)
+
+    merged = merge_answer(pending, "acme/app#42", now=NOW)
+
+    assert merged.action == action
+    assert merged.band == "medium"
+    assert not merged.is_executable
+    assert merged.slots["repo"] == "acme/app"
+    assert merged.slots["number"] == 42
+    assert merged.reason == reason
+
+
+@pytest.mark.parametrize("action", ["approve_github_pr", "close_github_pr"])
+def test_github_write_stage_b_yes_confirms_to_high(action: str) -> None:
+    pending = _pending(action, {"repo": "acme/app", "number": 42})
+
+    merged = merge_answer(pending, "yes, do it", now=NOW)
+
+    assert merged.action == action
+    assert merged.band == "high"
+    assert merged.is_executable
+    assert merged.reason == f"{action} confirmed"
+
+
+@pytest.mark.parametrize("action", ["approve_github_pr", "close_github_pr"])
+def test_github_write_stage_b_no_declines_terminally(action: str) -> None:
+    pending = _pending(action, {"repo": "acme/app", "number": 42})
+
+    merged = merge_answer(pending, "no, cancel that", now=NOW)
+
+    assert merged.action == "none"
+    assert not merged.is_executable
+    assert merged.reason == f"{action} declined"
+    # The target survives the decline for honest messaging.
+    assert merged.slots["repo"] == "acme/app"
+    assert merged.slots["number"] == 42
+
+
+# --- merge: the extra-friction state machine (repo -> method -> firm gate) -----
+
+
+def test_merge_stage_a_fills_repo_then_asks_method() -> None:
+    pending = _pending("merge_github_pr", {"number": 42}, reason="rule:github_merge")
+
+    merged = merge_answer(pending, "acme/app#42", now=NOW)
+
+    assert merged.action == "merge_github_pr"
+    assert merged.band == "medium"
+    assert not merged.is_executable
+    assert merged.slots["repo"] == "acme/app"
+    # Repo is known but the method is not, so we cannot fire yet.
+    assert "method" not in merged.slots
+
+
+def test_merge_method_pick_sets_method_and_stays_medium() -> None:
+    pending = _pending(
+        "merge_github_pr",
+        {"repo": "acme/app", "number": 42},
+        reason="rule:github_merge",
+    )
+
+    merged = merge_answer(pending, "squash", now=NOW)
+
+    assert merged.action == "merge_github_pr"
+    assert merged.band == "medium"
+    assert not merged.is_executable
+    assert merged.slots["method"] == "squash"
+
+
+@pytest.mark.parametrize("answer", ["42", "merge it"])
+def test_merge_firm_gate_confirms_to_high(answer: str) -> None:
+    # With a method chosen, naming the PR number (or the word "merge") fires.
+    pending = _pending(
+        "merge_github_pr",
+        {"repo": "acme/app", "number": 42, "method": "squash"},
+        reason="rule:github_merge",
+    )
+
+    merged = merge_answer(pending, answer, now=NOW)
+
+    assert merged.action == "merge_github_pr"
+    assert merged.band == "high"
+    assert merged.is_executable
+    assert merged.reason == "merge_github_pr confirmed"
+
+
+def test_merge_bare_yes_does_not_pass_firm_gate() -> None:
+    # A bare "yes" is deliberately not enough to land code on the base branch.
+    pending = _pending(
+        "merge_github_pr",
+        {"repo": "acme/app", "number": 42, "method": "squash"},
+        reason="rule:github_merge",
+    )
+
+    merged = merge_answer(pending, "yes", now=NOW)
+
+    assert merged.action == "merge_github_pr"
+    assert merged.band == "medium"
+    assert not merged.is_executable
+    assert merged.reason == "rule:github_merge"
+
+
+def test_merge_negative_declines_despite_naming_number() -> None:
+    # "no, don't merge 42" contains both "merge" and "42", but the negative wins
+    # -- the decline check runs before the firm gate.
+    pending = _pending(
+        "merge_github_pr",
+        {"repo": "acme/app", "number": 42, "method": "squash"},
+        reason="rule:github_merge",
+    )
+
+    merged = merge_answer(pending, "no, don't merge 42", now=NOW)
+
+    assert merged.action == "none"
+    assert not merged.is_executable
+    assert merged.reason == "merge_github_pr declined"
+    assert merged.slots["repo"] == "acme/app"

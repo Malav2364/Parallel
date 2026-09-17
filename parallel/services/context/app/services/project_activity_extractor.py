@@ -5,8 +5,10 @@ from app.schemas.project_activity import ProjectActivity
 
 
 class ProjectActivityExtractor:
-    def __init__(self):
-        self.client = genai.Client(
+    def __init__(self, client=None):
+        # Reuse the process-wide genai client when supplied; otherwise build our
+        # own so directly-constructed extractors keep working unchanged.
+        self.client = client or genai.Client(
             api_key=settings.GEMINI_API_KEY,
         )
 

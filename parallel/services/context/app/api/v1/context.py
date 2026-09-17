@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, Header
 import copy
 
 import httpx
+from fastapi import APIRouter, Depends, Header
 
 from app.api.deps import (
     get_action_executor,
@@ -19,13 +19,17 @@ from app.briefing.compose import build_briefing
 from app.clients.github_client import GithubClient
 from app.clients.projects_client import ProjectsClient
 from app.core.logger import logger
-from app.nlu.compose import with_message
-from app.nlu.confirmation import clarification_prompt, confirmation_prompt
+from app.nlu.compose import decline_message, with_message
+from app.nlu.confirmation import (
+    answer_candidates,
+    clarification_prompt,
+    confirmation_prompt,
+)
 from app.nlu.github_intent import is_github_query
 from app.nlu.github_reply import compose_github_reply
 from app.nlu.mapping import to_decision
 from app.nlu.rules import merge_answer, propose
-from app.nlu.schemas import ProposedAction
+from app.nlu.schemas import GITHUB_WRITE_ACTIONS, ProposedAction
 from app.schemas import (
     BriefingResponse,
     ContextAnalyzeRequest,
@@ -71,6 +75,24 @@ def _find_project_by_id(
     return next(
         (project for project in projects if project["id"] == project_id),
         None,
+    )
+
+
+def _pending_with_candidates(proposal: ProposedAction) -> ProposedAction:
+    """Attach one-tap chip labels to a confirm/clarify proposal, if any apply.
+
+    The chat renders a tap chip per string in ``slots.candidates`` and sends the
+    label verbatim next turn, so we only add labels that parse back through the
+    offline confirmation grammar (see ``answer_candidates``). Slot-fills that
+    need free text get no labels and ride back unchanged.
+    """
+
+    labels = answer_candidates(proposal)
+    if not labels:
+        return proposal
+
+    return proposal.model_copy(
+        update={"slots": {**proposal.slots, "candidates": labels}},
     )
 
 
@@ -143,18 +165,19 @@ async def _github_query_reply(github: GithubClient, user_id: str) -> str:
     return compose_github_reply(signals=signals, connected=connected)
 
 
-async def _resolve_comment_repo(
+async def _resolve_github_repo(
     github: GithubClient,
     user_id: str,
     proposal: ProposedAction,
 ) -> ProposedAction:
-    """Fill a comment proposal's missing ``repo`` from the user's synced PRs.
+    """Fill a GitHub write proposal's missing ``repo`` from the user's synced PRs.
 
     The user names a bare "PR 42"; we match it against their GitHub signals to
     find the repo. Exactly one distinct match resolves it; 0 or >1 leaves the
     proposal unchanged (the confirmation then asks "which repo?" rather than
     guessing). Degrades like /briefing: a down connector never 500s the
-    conversation, it just leaves the repo unresolved.
+    conversation, it just leaves the repo unresolved. Shared by comment, approve,
+    merge, and close -- the resolution keys only off the PR number.
     """
 
     number = proposal.slots.get("number")
@@ -243,9 +266,6 @@ async def process_context(
     executor: ActionExecutor = Depends(
         get_action_executor,
     ),
-    resolver: ProjectResolver = Depends(
-        get_project_resolver,
-    ),
     projects_client: ProjectsClient = Depends(
         get_projects_client,
     ),
@@ -291,9 +311,11 @@ async def process_context(
                 }
             )
 
-        if merged.action == "none" and merged.reason == "post_github_comment declined":
+        if merged.action == "none" and merged.reason in {
+            f"{action} declined" for action in GITHUB_WRITE_ACTIONS
+        }:
             # The user answered "no" to a public write. Terminal: clear the
-            # pending action and acknowledge -- never re-ask, never post.
+            # pending action and acknowledge -- never re-ask, never write.
             return with_message(
                 {
                     "type": "context_only",
@@ -307,7 +329,9 @@ async def process_context(
                     "execution": None,
                     "tier": "rules",
                     "pending_action": None,
-                    "prompt": "No problem — I won't post that comment.",
+                    "prompt": decline_message(
+                        merged.reason.removesuffix(" declined"),
+                    ),
                 }
             )
 
@@ -326,7 +350,7 @@ async def process_context(
                     "decision": None,
                     "execution": None,
                     "tier": "rules",
-                    "pending_action": merged,
+                    "pending_action": _pending_with_candidates(merged),
                     "prompt": confirmation_prompt(merged),
                 }
             )
@@ -343,7 +367,7 @@ async def process_context(
                 "decision": None,
                 "execution": None,
                 "tier": "rules",
-                "pending_action": merged,
+                "pending_action": _pending_with_candidates(merged),
                 "prompt": clarification_prompt(merged),
             }
         )
@@ -377,13 +401,14 @@ async def process_context(
 
     if (
         proposal is not None
-        and proposal.action == "post_github_comment"
+        and proposal.action in GITHUB_WRITE_ACTIONS
         and not proposal.slots.get("repo")
     ):
-        # A bare "comment on PR 42" names no repo. Fill it from the user's synced
-        # PRs so the confirmation can name the target; an unresolved repo (0 or
-        # >1 match) falls through to the MEDIUM branch, which asks which repo.
-        proposal = await _resolve_comment_repo(github, x_user_id, proposal)
+        # A bare "comment on PR 42" (or approve/merge/close) names no repo. Fill it
+        # from the user's synced PRs so the confirmation can name the target; an
+        # unresolved repo (0 or >1 match) falls through to the MEDIUM branch, which
+        # asks which repo.
+        proposal = await _resolve_github_repo(github, x_user_id, proposal)
 
     context = context_service.get_context(
         x_user_id,
@@ -437,7 +462,7 @@ async def process_context(
                 "decision": None,
                 "execution": None,
                 "tier": "rules",
-                "pending_action": proposal,
+                "pending_action": _pending_with_candidates(proposal),
                 "prompt": confirmation_prompt(proposal),
             }
         )
@@ -459,7 +484,7 @@ async def process_context(
                 "decision": None,
                 "execution": None,
                 "tier": "rules",
-                "pending_action": proposal,
+                "pending_action": _pending_with_candidates(proposal),
                 "prompt": clarification_prompt(proposal),
             }
         )
@@ -468,61 +493,81 @@ async def process_context(
         # Tier-2 (local semantic NLU). Fetch the user's projects once, then try
         # to resolve which one the message is about via in-process cosine over
         # cached embeddings. A confident, unambiguous match skips the slower,
-        # non-deterministic Gemini resolver; anything uncertain (or no projects
-        # at all) falls through to it rather than guessing.
+        # non-deterministic Gemini path; anything uncertain (or no projects at
+        # all) falls through to the merged understanding call, which resolves the
+        # project itself in the same turn.
         projects = await projects_client.list_projects(
             x_user_id,
         )
 
-        activity = None
         activity_project = None
         resolution_error = None
+        project = None
 
-        if projects:
-            resolution = await semantic_resolver.resolve(
-                user_id=x_user_id,
-                user_input=request.message,
-                projects=projects,
-            )
-            resolution_source = "nlu" if resolution.matched else "llm"
-
-            if not resolution.matched:
-                # Semantic miss: reuse the projects already fetched above so the
-                # Gemini resolver doesn't re-fetch them itself.
-                resolution = await resolver.resolve(
-                    user_id=x_user_id,
-                    user_input=request.message,
-                    projects=projects,
-                )
-        else:
+        if not projects:
+            # No projects to match against: hand the engine a concrete
+            # not-matched resolution so it decides + extracts in one call.
             resolution = ProjectResolution(
                 matched=False,
                 confidence=1.0,
                 reason="The user has no existing projects.",
             )
             resolution_source = "nlu"
-
-        project = None
-        if resolution.matched:
-            project = _find_project_by_id(
+            result = understanding.decide(
+                user_input=request.message,
+                current_context=original_context,
+                project_resolution=resolution,
+                project=None,
+            )
+        else:
+            resolution = await semantic_resolver.resolve(
+                user_id=x_user_id,
+                user_input=request.message,
                 projects=projects,
-                project_id=resolution.project_id,
             )
 
-            if project is None:
-                resolution_error = "Resolved project could not be found."
+            if resolution.matched:
+                # Tier-2 hit: the local NLU already resolved the project, so the
+                # single understanding call just decides, extracts durable
+                # context, and reports that project's current_focus /
+                # latest_activity in the same structured response.
+                resolution_source = "nlu"
+                project = _find_project_by_id(
+                    projects=projects,
+                    project_id=resolution.project_id,
+                )
+                if project is None:
+                    resolution_error = "Resolved project could not be found."
 
-        # One Gemini call replaces the former extractor + activity-extractor +
-        # decision-engine trio: it extracts durable context, decides, and (when
-        # a project resolved cleanly) reports that project's current_focus /
-        # latest_activity in the same structured response. All three are
-        # independent, so merging them drops a Tier-2-hit turn to one model call.
-        result = understanding.decide(
-            user_input=request.message,
-            current_context=original_context,
-            project_resolution=resolution,
-            project=project if resolution_error is None else None,
-        )
+                result = understanding.decide(
+                    user_input=request.message,
+                    current_context=original_context,
+                    project_resolution=resolution,
+                    project=project if resolution_error is None else None,
+                )
+            else:
+                # Tier-2 miss: rather than a separate Gemini resolve call, feed
+                # the candidate projects into the one understanding call and let
+                # it resolve, decide, extract, and (on a match) report activity
+                # together -- one model round trip on the miss path, not two. The
+                # engine guarantees a concrete resolution back (A4), so the
+                # matched-id lookup below is safe.
+                resolution_source = "llm"
+                result = understanding.decide(
+                    user_input=request.message,
+                    current_context=original_context,
+                    project_resolution=None,
+                    projects=projects,
+                )
+                resolution = result.resolution
+
+                if resolution.matched:
+                    project = _find_project_by_id(
+                        projects=projects,
+                        project_id=resolution.project_id,
+                    )
+                    if project is None:
+                        resolution_error = "Resolved project could not be found."
 
         decision = result.decision
         activity = result.activity

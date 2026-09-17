@@ -9,7 +9,9 @@ plain ``execution`` dict, and a ``ProjectActivity`` for the matched-project path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from app.nlu.compose import with_message
+import pytest
+
+from app.nlu.compose import decline_message, with_message
 from app.schemas.decision import ContextDecision
 from app.schemas.project_activity import ProjectActivity
 
@@ -271,3 +273,39 @@ def test_multi_intent_reports_the_action_and_the_project() -> None:
 
 def test_unknown_type_gets_a_safe_default() -> None:
     assert _message(type="something_new") == "Got it."
+
+
+# --------------------------------------------------------------------------
+# GitHub write success + decline copy
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "action, verb",
+    [
+        ("approve_github_pr", "approved"),
+        ("merge_github_pr", "merged"),
+        ("close_github_pr", "closed"),
+    ],
+)
+def test_github_write_success_names_repo_and_number(action: str, verb: str) -> None:
+    message = _message(
+        type="new_intent",
+        decision=_decision(action, github_repo="acme/app", github_number=42),
+        execution={"executed": True, "action": action},
+    )
+
+    assert message == f"Done — {verb} acme/app #42."
+
+
+@pytest.mark.parametrize(
+    "action, tail",
+    [
+        ("post_github_comment", "post that comment"),
+        ("approve_github_pr", "approve that PR"),
+        ("merge_github_pr", "merge that PR"),
+        ("close_github_pr", "close that PR"),
+    ],
+)
+def test_decline_message_is_warm_and_action_specific(action: str, tail: str) -> None:
+    assert decline_message(action) == f"No problem — I won't {tail}."

@@ -50,3 +50,62 @@ class GithubClient:
         )
         response.raise_for_status()
         return response.json()
+
+    async def approve_pr(
+        self,
+        user_id: str,
+        repo: str,
+        number: int,
+        body: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict:
+        headers = {"X-User-Id": user_id}
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        response = await self._client.post(
+            f"{self.base_url}/reviews",
+            headers=headers,
+            json={"repo": repo, "number": number, "body": body},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def merge_pr(
+        self,
+        user_id: str,
+        repo: str,
+        number: int,
+        merge_method: str,
+        idempotency_key: str | None = None,
+    ) -> dict:
+        headers = {"X-User-Id": user_id}
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        response = await self._client.post(
+            f"{self.base_url}/merges",
+            headers=headers,
+            json={"repo": repo, "number": number, "merge_method": merge_method},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def close_pr(
+        self,
+        user_id: str,
+        repo: str,
+        number: int,
+        idempotency_key: str | None = None,
+    ) -> dict:
+        headers = {"X-User-Id": user_id}
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        response = await self._client.post(
+            f"{self.base_url}/closures",
+            headers=headers,
+            json={"repo": repo, "number": number},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        return response.json()

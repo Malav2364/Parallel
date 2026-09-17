@@ -36,8 +36,10 @@ def normalize_extraction_updates(updates: dict, current_context: dict) -> dict:
 class ContextExtractor:
     """Extract durable user context from natural-language input."""
 
-    def __init__(self):
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    def __init__(self, client=None):
+        # Reuse the process-wide genai client when supplied; otherwise build our
+        # own so directly-constructed extractors keep working unchanged.
+        self.client = client or genai.Client(api_key=settings.GEMINI_API_KEY)
 
     def extract(
         self,

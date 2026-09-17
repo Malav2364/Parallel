@@ -2,18 +2,30 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.api.deps import (
     get_comment_service,
+    get_pull_request_service,
     get_signal_service,
     get_token_service,
 )
 from app.schemas.github import (
+    ApprovalCreateRequest,
+    CloseCreateRequest,
     CommentCreateRequest,
     CommentResponse,
+    MergeCreateRequest,
+    MergeResponse,
+    PullStateResponse,
+    ReviewResponse,
     SignalResponse,
     SyncResponse,
     TokenConnectRequest,
     TokenStatusResponse,
 )
-from app.services import CommentService, SignalService, TokenService
+from app.services import (
+    CommentService,
+    PullRequestService,
+    SignalService,
+    TokenService,
+)
 from app.services.errors import (
     GithubWriteError,
     InvalidTokenError,
@@ -107,4 +119,100 @@ def create_comment(
         id=result["id"],
         url=result["html_url"],
         body=result["body"],
+    )
+
+
+@router.post("/reviews", response_model=ReviewResponse)
+def create_review(
+    request: ApprovalCreateRequest,
+    x_user_id: str = Header(...),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    service: PullRequestService = Depends(get_pull_request_service),
+) -> ReviewResponse:
+    try:
+        result = service.approve(
+            user_id=x_user_id,
+            repo=request.repo,
+            number=request.number,
+            body=request.body,
+            idempotency_key=idempotency_key,
+        )
+    except NotConnectedError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="GitHub is not connected",
+        ) from exc
+    except GithubWriteError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to approve the PR on GitHub",
+        ) from exc
+
+    return ReviewResponse(
+        id=result["id"],
+        state=result["state"],
+    )
+
+
+@router.post("/merges", response_model=MergeResponse)
+def create_merge(
+    request: MergeCreateRequest,
+    x_user_id: str = Header(...),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    service: PullRequestService = Depends(get_pull_request_service),
+) -> MergeResponse:
+    try:
+        result = service.merge(
+            user_id=x_user_id,
+            repo=request.repo,
+            number=request.number,
+            merge_method=request.merge_method,
+            idempotency_key=idempotency_key,
+        )
+    except NotConnectedError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="GitHub is not connected",
+        ) from exc
+    except GithubWriteError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to merge the PR on GitHub",
+        ) from exc
+
+    return MergeResponse(
+        merged=result["merged"],
+        sha=result.get("sha"),
+        message=result["message"],
+    )
+
+
+@router.post("/closures", response_model=PullStateResponse)
+def create_closure(
+    request: CloseCreateRequest,
+    x_user_id: str = Header(...),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    service: PullRequestService = Depends(get_pull_request_service),
+) -> PullStateResponse:
+    try:
+        result = service.close(
+            user_id=x_user_id,
+            repo=request.repo,
+            number=request.number,
+            idempotency_key=idempotency_key,
+        )
+    except NotConnectedError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="GitHub is not connected",
+        ) from exc
+    except GithubWriteError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to close the PR on GitHub",
+        ) from exc
+
+    return PullStateResponse(
+        number=result["number"],
+        state=result["state"],
     )

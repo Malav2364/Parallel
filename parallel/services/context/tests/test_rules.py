@@ -9,7 +9,14 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.nlu.rules import _parse_github_ref, propose, propose_github_comment
+from app.nlu.rules import (
+    _parse_github_ref,
+    propose,
+    propose_github_approve,
+    propose_github_close,
+    propose_github_comment,
+    propose_github_merge,
+)
 
 IST = ZoneInfo("Asia/Kolkata")
 NOW = datetime(2026, 8, 23, 10, 0, tzinfo=IST)
@@ -272,6 +279,65 @@ def test_reminder_wins_over_github_comment() -> None:
     # propose_github_comment is registered AFTER propose_reminder, so a request
     # to be reminded *to* comment stays a reminder rather than posting.
     proposal = propose("remind me to comment on PR 42: LGTM tomorrow at 9am", now=NOW)
+
+    assert proposal is not None
+    assert proposal.action == "create_reminder"
+
+
+@pytest.mark.parametrize(
+    "text, action, number, repo, body",
+    [
+        # Approve keeps an optional review body; merge/close ignore any body.
+        ("approve PR 42", "approve_github_pr", 42, None, None),
+        (
+            "approve acme/app#42: nice work",
+            "approve_github_pr",
+            42,
+            "acme/app",
+            "nice work",
+        ),
+        ("merge PR 42", "merge_github_pr", 42, None, None),
+        ("merge acme/app#7", "merge_github_pr", 7, "acme/app", None),
+        ("close PR 99", "close_github_pr", 99, None, None),
+        ("close acme/app#3", "close_github_pr", 3, "acme/app", None),
+    ],
+)
+def test_github_pr_actions_propose_at_medium(
+    text: str,
+    action: str,
+    number: int,
+    repo: str | None,
+    body: str | None,
+) -> None:
+    # Every public write confirms first -- never HIGH, never auto-fires.
+    proposal = propose(text, now=NOW)
+
+    assert proposal is not None
+    assert proposal.action == action
+    assert proposal.band == "medium"
+    assert not proposal.is_executable
+    assert proposal.slots["number"] == number
+    assert proposal.slots.get("repo") == repo
+    assert proposal.slots.get("body") == body
+
+
+@pytest.mark.parametrize(
+    "proposer, text",
+    [
+        # The verb is present but there is no PR number to target.
+        (propose_github_approve, "approve the plan"),
+        (propose_github_merge, "merge the two branches"),
+        (propose_github_close, "close the loop on this"),
+    ],
+)
+def test_github_pr_action_declined_without_number(proposer, text: str) -> None:
+    assert proposer(text, now=NOW) is None
+
+
+def test_reminder_wins_over_github_merge() -> None:
+    # GitHub write proposers all run AFTER propose_reminder, so "remind me to
+    # merge ..." stays a reminder rather than arming a merge.
+    proposal = propose("remind me to merge PR 42 tomorrow at 9am", now=NOW)
 
     assert proposal is not None
     assert proposal.action == "create_reminder"

@@ -8,7 +8,12 @@ from app.repositories import (
     SignalRepository,
     TokenRepository,
 )
-from app.services import CommentService, SignalService, TokenService
+from app.services import (
+    CommentService,
+    PullRequestService,
+    SignalService,
+    TokenService,
+)
 
 
 def get_github_client() -> GitHubClient:
@@ -50,3 +55,11 @@ def get_comment_service(
     github: GitHubClient = Depends(get_github_client),
 ) -> CommentService:
     return CommentService(idempotency, token_service, github)
+
+
+def get_pull_request_service(
+    idempotency: IdempotencyRepository = Depends(get_idempotency_repository),
+    token_service: TokenService = Depends(get_token_service),
+    github: GitHubClient = Depends(get_github_client),
+) -> PullRequestService:
+    return PullRequestService(idempotency, token_service, github)

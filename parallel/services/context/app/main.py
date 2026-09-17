@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
+from google import genai
 
 from app.api.health import router as health_router
 from app.api.router import router
@@ -17,6 +18,10 @@ async def lifespan(app: FastAPI):
     # connections are reused across requests instead of dialled per call.
     async with httpx.AsyncClient(timeout=10.0) as client:
         app.state.http_client = client
+        # One genai client shared by every Gemini-backed engine, so a request
+        # no longer builds a fresh client per stage. The ctor is sync with no
+        # async teardown, so it lives directly on app.state.
+        app.state.genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
         yield
 
 
